@@ -1,0 +1,7 @@
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Conda environment folders to ignore, right now not needed
+

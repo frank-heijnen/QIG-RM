@@ -1,10 +1,19 @@
 # ASR-Portfolio-Tracker
-This repository contains a command-line interface (CLI) application to track a simple investment portfolio of the magnificent seven.
-It consists out of the following components:
-    - Model.py: the main engine, consisting out of a Stock class and a Portfolio class entaining corresponding relevant functions
-    - Viewer.py: file entaining the desired data visualisation tools
-    - DataCollector.py: here data from the Yahoo Finance API gets called to get historic prices of the magnificent seven. Data over 10 years is used from 01-01-2015 until      31-12-2024
-    - Controller.py: this is the control room, from which the classes and functions from above files can be called
 
-For the relevant packages and dependencies see requirements.txt (PDF Viewer, numpy, pandas, yfinance, seaborn)
+This repository contains a command-line interface (CLI) application to track a simple investment portfolio of the magnificent seven. Note that I assume in our stylized economy it is only possible to invest in these stocks, but of course you could extend it to any universe of tickers. It is also assumed that the total budget is invested at 31-12-2024.
 
+This repository consists of the following components:
+
+- **Model.py**  
+  The main engine: defines a `Stock` class and a `Portfolio` class with all the simulation & allocation logic.
+
+- **Viewer.py**  
+  A set of plotting functions (Matplotlib & Seaborn) to show current and historical price charts.
+
+- **DataCollector.py**  
+  Pulls in historical prices and other meta-/masterdata from Yahoo Finance API.
+
+- **Controller.py**  
+  The “control room” / CLI entry-point that ties together data fetching, modeling and viewing.
+
+For the required packages and dependencies see `requirements.txt` (NumPy, pandas, yfinance, seaborn, etc.), run pip install -r requirements.txt in terminal.

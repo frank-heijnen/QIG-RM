@@ -6,12 +6,14 @@ import pandas as pd
 
 def fetch_master_data(tickers) -> pd.DataFrame:
     r"""
-    Fetch data of the specified stocks (being a list) that does not change over time (masterdata), it consists out of:
+    Fetch data of the specified stocks that does not change over time (masterdata), it consists out of:
         - ticker
         - sector
         - asset class
         - current price
         - market cap (for asset allocation)
+
+    :params tickers: list of stock tickers
     
     :returns: DataFrame object of master data
     """
@@ -34,7 +36,9 @@ def fetch_master_data(tickers) -> pd.DataFrame:
 
 def fetch_history(tickers, start = "2015-01-01", end = "2024-12-31", interval = "1d") -> pd.DataFrame:
     r"""
-    Fetch the historic prices of specified stocks (being again a list), use closing price of each day
+    Fetch the historic prices of specified stocks, use closing price of each day
+
+    :params tickers: list of stock tickers
 
     :returns: DataFrame object of price histories
     """
