@@ -2,10 +2,10 @@
 
 This repository contains a command-line interface (CLI) application to track a simple investment portfolio of the magnificent seven, using VSCode as IDE. I assume that in our stylized economy it is only possible to invest in these stocks, but you could extend it to any universe of tickers. It is also assumed that the total budget is invested at 31-12-2024 (see Ex (1) for an elaboration).
 
-This repository consists of the following components:
+This repository consists of the following components in the maps *data* and *models*:
 
-- **Model.py**  
-  The main engine: defines a `Stock` class and a `Portfolio` class with all the simulation & allocation logic.
+- **Portfolio.py**  
+  The main engine: defines a `Stock` class and a `Portfolio` class with all the simulation & allocation logic including additional functions.
 
 - **Viewer.py**  
   A set of plotting functions to show current - and historical price charts. Also contains a function to plot simulated portfolio trajectories and calculate security capital requirements using the 1-year 99.5% VaR.
