@@ -8,7 +8,7 @@ import seaborn as sns
 
 sns.set(style="whitegrid")
 
-def plot_historical_prices(historic_prices, tickers = None, show_prices = False):
+def plot_historical_prices(historic_prices, tickers = None, show_prices = False) -> None:
     r"""
     Plot past price trajectories for one or more tickers
 
@@ -35,7 +35,7 @@ def plot_historical_prices(historic_prices, tickers = None, show_prices = False)
     plt.tight_layout()
     plt.show()
 
-def plot_current_prices(master_data, tickers = None):
+def plot_current_prices(master_data, tickers = None) -> None:
     r"""
     Barplot of current prices for each specified ticker
 
@@ -60,12 +60,12 @@ def plot_current_prices(master_data, tickers = None):
     plt.tight_layout()
     plt.show()
 
-def plot_portfolio_trajectories(t, port_paths, n_paths = 10, show_mean = True ):
+def plot_portfolio_trajectories(t, port_paths, n_paths = 10, show_mean = True ) -> None:
     r"""
     Plot simulated portfolio paths over time.
 
-    :params t:
-    :params port_paths: 
+    :params t: time grid
+    :params port_paths: Dataframe object of simulated portfolio paths
     :params n_paths: number of paths of the 100k to plot
 
     :returns: a nice plot of simulated portfolio paths
@@ -88,19 +88,24 @@ def plot_portfolio_trajectories(t, port_paths, n_paths = 10, show_mean = True ):
 
     # Plot also the mean of the paths
     if show_mean:
+        # Make confidence bands
+        lower, upper = np.percentile(port_paths, [5,95], axis=1)
+        plt.fill_between(t, lower, upper, color="grey", alpha=0.3, label="Confidence Band")
+        #Show Mean
         mean_path = port_paths.mean(axis=1)
         plt.plot(t, mean_path, color="black", linewidth=2, label="Mean")
         plt.legend(title="Simulation", loc="upper left")
 
     plt.title("Simulated Portfolio Value Paths")
     plt.xlabel("Time (years)")
-    plt.ylabel("Portfolio Value")
+    plt.yscale("log")
+    plt.ylabel("Portfolio Value (log scale)")
     plt.tight_layout()
     plt.show()
 
-def histogram_uncertainty(port_paths):
+def histogram_uncertainty(port_paths) -> None:
     r"""
-    Plot histogram to see distribution of terminal portfolio values, includes calculating VaR and CVaR (tail risk)
+    Plot histogram to see distribution of terminal portfolio values, includes calculating VaR, CVaR (tail risk) and
 
     :params port_paths: matrix of simulated portfolio paths
 
@@ -115,7 +120,7 @@ def histogram_uncertainty(port_paths):
     plt.xlabel("Portfolio Value at T")
     plt.ylabel("Frequency")
 
-    # Calculate 
+    # Calculate VaR and CVaR
     alpha = 5
     VaR   = np.percentile(final_vals, alpha)
     CVaR  = final_vals[final_vals <= VaR].mean()
@@ -126,3 +131,29 @@ def histogram_uncertainty(port_paths):
     plt.title("Distribution of Simulated Portfolio Values at T with VaR/CVaR")
     plt.tight_layout()
     plt.show()
+
+import numpy as np
+
+def compute_solvency_capital_requirement(port_paths, days_per_year = 252, alpha = 99.5) -> float:
+    r"""
+    According to Solvency II, one must be able to cover a 1 in 200 shock event and still stay solvent.
+    This formula calculates the required capital to cover this event based on an investment of "budget".
+    Hence loss = initial budget - VaR(portfolio_value_1year, 0.5 percentile)
+
+    :params port_paths: matrix of simulated portfolio paths
+
+    :returns: the required buffer such that with alpha% confidence the one-year losses wil not exceed "scr"
+    """
+    # Extract starting portfolio value, which equals budget for all paths
+    initial_value = port_paths[0, 0]  # assume all paths start at the same V0
+
+    # Get simulated portfolio values within one year
+    value_1year = port_paths[days_per_year, :]  # shape (M,)
+
+    # Find the (100 - alpha)% percentile of V1y, i.e. bottom (100-alpha)% tail
+    tail_pct = 100 - alpha
+    floor_value = np.percentile(value_1year, tail_pct)
+
+    # Capital buffer required
+    scr = initial_value - floor_value
+    return scr

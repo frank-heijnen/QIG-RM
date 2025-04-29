@@ -4,11 +4,11 @@
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from data.DataCollector   import fetch_features, fetch_history
+from models.ML_Model      import prepare_training_data, train_GBR, predict_next_returns
 
 # Seed for reproducability of simulated stock paths
 np.random.seed(1234)
-
-# Data on 10 years NEEDS TO BE ROBUST STILL!
 
 # Focuses on simulation of stock prices
 @dataclass
@@ -23,7 +23,7 @@ class Stock:
     mu: float
     sigma: float
 
-    def estimate_simulation_params(historic_prices, N) -> tuple:
+    def estimate_simulation_params(historic_prices: pd.DataFrame, N=252) -> tuple:
         r"""
         Given a dataframe of historic stock prices, estimate mu and sigma of each stock, this is used to simulate stock paths for portfolio simulation.
         Make use of log returns assuming a Geometric Brownian Motion structure for stock prices:
@@ -47,7 +47,7 @@ class Stock:
 
         return mu, sigma
 
-    def simulate_stock(self, T, N, M) -> tuple:
+    def simulate_stock(self, T, M, N=252) -> tuple:
         r"""
         Simulate stock prices of Stock object according to Geometric Brownian Motion for simplicity:
  
@@ -79,29 +79,30 @@ class Portfolio:
         self.assets = assets or []
         self.budget = budget
     
-    def add_asset(self, asset: Stock):
-        """
-        Helper function that adds asset to portfolio
+    def add_asset(self, asset: Stock) -> None:
+        r"""
+        Helper function that adds asset object to portfolio
         """
         try:
             self.assets.append(asset)
         except:
             print(f"Not possible to add {asset.ticker} to portfolio since we do not have corresponding data")
 
-    def delete_asset(self, asset: Stock):
-        """
-        Helper function that deletes asset out of portfolio
+    def delete_asset(self, asset: Stock) -> None:
+        r"""
+        Helper function that deletes asset object from of portfolio
         """
         try:
             self.assets.remove(asset)
         except:
             print(f"{asset.ticker} is not in the portfolio, so cannot be deleted")
     
-    def asset_allocation(self, method: str) -> list:
+    def asset_allocation(self, method: str) -> np.ndarray:
         r"""
         Compute portfolio weights given a certain budget based on a particular method. For simplicity the following methods can be used:
             - "equal": equal weight across assets
             - "marketcap": weights determined by each assets' market cap
+            - "ml": machine-learning based weight allocation
 
         :params method: weight allocation method used
         
@@ -114,6 +115,34 @@ class Portfolio:
         elif method == "marketcap":
             caps = np.array([asset.market_cap for asset in self.assets], dtype=float)
             weights = caps / caps.sum()
+        elif method== "ml":
+
+            # Make next-day predictions using the trained model
+            predictions = predict_next_returns(self.forecaster, self.features)
+
+            # Negative predictions get value 0, also normalize weights such that sum = 1
+            w_ml = predictions.apply(lambda x: max(x,0))
+            if w_ml.sum() > 0:
+                weights = w_ml.values / w_ml.sum()
+            else: # If for example all predicted returns are negative, then do equal weighting
+                weights = np.repeat(1 / len(self.assets), len(self.assets))
+
+            # Get realized returns for 02-01-2025
+            # Excuse me for the hard-coding...
+            tickers = [asset.ticker for asset in self.assets]
+            prices = fetch_history(tickers, start="2024-12-30", end  = "2025-01-03") # End date is exclusive
+            realized_returns = prices.iloc[-1] / prices.iloc[-2] - 1                    
+
+            table = pd.DataFrame({
+                "Predicted next return": predictions,
+                "Realized returns": realized_returns,
+                "Weights": weights
+            })
+            print("")
+            print(f"========== Comparing the predicted returns with realized returns, also showing portfolio weights ==========")
+            print("")
+            print(table)         
+
         else:
             raise ValueError(f"Unknown method '{method}'")
 
@@ -155,6 +184,7 @@ class Portfolio:
         }, index=tickers)
 
         # Show the allocation info
+        print("")
         print(f"=========== Current Portfolio Characteristics making use of the {method} method ===========")
         print("")
         print(df)
@@ -165,12 +195,14 @@ class Portfolio:
         print("")
         if method == "equal":
             print("Portfolio weights are w_i = 1 / |assets| for asset i \nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
-        else:
-            print("Portfolio weights are w_i = market_cap_i / sum market caps \nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
+        elif method == "marketcap":
+            print("Portfolio weights are w_i = market_cap_i / sum_(i=1)^(#assets) market_cap_i\nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
+        else: 
+            print("Portfolio weights are w_i = tilde(p)_i / sum_(i=1)^(#assets) tilde(p)_i where tilde(p)_i = max(forecasted_price_i, 0)\nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
 
         return df
 
-    def simulate_portfolio(self, df, T, N, M) -> tuple:
+    def simulate_portfolio(self, df: pd.DataFrame, T, M, N=252) -> tuple:
         r"""
         Simulate the portfolio over T years, with N steps per year, M paths, by simulating its individual stocks 
 
@@ -190,10 +222,31 @@ class Portfolio:
 
         for asset in self.assets:
             # call the instance method on each Stock
-            _, S = asset.simulate_stock(T, N, M)
+            _, S = asset.simulate_stock(T, M)
             port_paths += S * shares.loc[asset.ticker]
         
         return t, port_paths
+    
+    def train_forecaster(self, historic_prices: pd.DataFrame, test_size: float = 0.2, random_state: int = 0) -> None:
+        r"""
+        Train a GradientBoostingRegressor on the constructed historical features to predict next-day returns.
+        After calling this, self.forecaster will be the fitted XGBoost model which is used in the asset_allocation function.
+
+        :params historic_prices: dataframe object with historic prices
+        """
+        # Fetch list of tickers
+        tickers = [asset.ticker for asset in self.assets]
+
+        # Fetch the features
+        features = fetch_features(tickers, historic_prices)
+        self.features = features
+
+        # Prepare the training data
+        X, y = prepare_training_data(features)
+
+        # Train the model!
+        self.forecaster = train_GBR(X, y, test_size=test_size, random_state=random_state)
+
             
         
 

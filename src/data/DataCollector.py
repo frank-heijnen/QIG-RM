@@ -54,3 +54,40 @@ def fetch_history(tickers, start = "2015-01-01", end = "2024-12-31", interval = 
 
     return historic_prices
 
+def fetch_features(tickers, historic_prices) -> pd.DataFrame:
+    r"""
+    Fetch the needed features from Yahoo Finance to make them ready for preparation, the following features are chosen:
+        - ret_1: 1-day return
+        - ret_5: 5-day (weekly) return
+        - vol_20: 20-day rolling volatility of ret_1
+        - mom_20: 20-day momentum = close / 20-day MA - 1
+    
+    These four capture the short-term return direction, the volatility over periods and medium-term momentum (if price above 20-day average, 
+    could indicate bullish signal and vice versa).
+
+    :params tickers: list of stock tickers
+    :params historic_prices: Datafram object of historic prices
+
+    :returns: Dataframe object containing the desired features with multi-index columns (level 0: ticker name, level 1: feature name)
+    """
+    feat_dfs = []
+    for ticker in tickers:
+        df = historic_prices[ticker].to_frame("close")
+        # One day returns and five day returns
+        df["ret_1"]  = df["close"].pct_change(1)
+        df["ret_5"]  = df["close"].pct_change(5)
+        # First create moving window, then apply std function
+        df["vol_20"] = df["ret_1"].rolling(20).std()
+        # First calculate moving average, use this to calculate momentum
+        df["ma_20"]  = df["close"].rolling(20).mean()
+        df["mom_20"] = df["close"] / df["ma_20"] - 1
+        # Note that NaN values are generated because differences are taken, drop them
+        df = df.dropna()
+
+        # To create a multi-index dataframe object, give these columns a ticker name
+        df.columns = pd.MultiIndex.from_product([[ticker], df.columns])
+        feat_dfs.append(df)
+
+    # Join the list of dataframes side-by-side for each ticker
+    features = pd.concat(feat_dfs, axis=1)
+    return features
