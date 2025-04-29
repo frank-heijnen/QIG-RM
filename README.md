@@ -75,7 +75,7 @@ To see the one-year security capital requirements (99.5% VaR) based on the simul
 As an extra, I want to use ML to determine the portfolio weights. At 31-12-2024 I construct the portfolio and predict the next trading day returns using a ML model. Using these returns, I determine portfolio weights according to the following formula:
 
 ```math
-w_i^{ml} = \frac{\tilde{p}_i}{\sum_{i=j}^{#assets} \tilde{p}_j} \text{ where } \tilde{p}_i = max(p_i,0)
+w_i^{ml} = \frac{\tilde{p}_i}{\sum_{i=j}^{N_assets} \tilde{p}_j} \text{ where } \tilde{p}_i = max(p_i,0)
 ```
 
 Note that $p_i$ is the predicted return for stock $i$ (for next trading day) using the ML model. The rationale is that if the forecasted return is higher for some stocks, I want to allocate more budget to that stock, and prevent exposure to stocks from which the predicted return is negative. If all predictions are negative, the equal weighting method is used.
