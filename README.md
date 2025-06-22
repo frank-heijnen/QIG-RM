@@ -1,1 +1,2 @@
 # Quantitative Investment Group Risk Management Repo
+For the required packages and dependencies see requirements.txt (NumPy, pandas, yfinance, seaborn, sklearn); ```run pip install -r requirements.txt``` in terminal. Make sure that working directory is .../QIG-RM.
