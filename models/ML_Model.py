@@ -50,7 +50,7 @@ def train_GBR(X: pd.DataFrame, y: pd.Series, test_size: float = 0.2, random_stat
 
     # Currently the model is not validated. Note that as test data returns after 31-12-2024 could be used
 
-    # Create model WHY THESE PARAMETERS?
+    # Create model
     model = GradientBoostingRegressor(n_estimators=200, learning_rate=0.05, max_depth=4, random_state=random_state)
 
     # Fit the model on the training data which is the first 80% of the data, adhering to the chronological format of time-series data

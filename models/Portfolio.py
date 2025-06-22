@@ -1,5 +1,3 @@
-## Model ASR Portfolio Tracker
-
 # Import relevant packages
 import numpy as np
 import pandas as pd
@@ -57,7 +55,7 @@ class Stock:
 
         :returns: time grid and M simulated stock prices for N periods, hence S is of shape (N,M)
         """
-        total_steps = T * N
+        total_steps = int(T * N)
         dt = 1/N
         t = np.linspace(0, T, total_steps+1)
 
@@ -112,6 +110,8 @@ class Portfolio:
         # Dependent on which method is specified, corresponding weights are determined
         if method == "equal":
             weights = np.repeat(1 / len(self.assets), len(self.assets))
+        elif method == "manual": # For manual input
+            weights = np.array([3.0927, 2.3174, 5.8055, 11.6446, 1.5286, 1.2794, 0.3141, 1.4641, 1.4286, 7.6673, 7.5068], dtype=float)
         elif method == "marketcap":
             caps = np.array([asset.market_cap for asset in self.assets], dtype=float)
             weights = caps / caps.sum()
@@ -164,9 +164,9 @@ class Portfolio:
         current_prices = np.array([asset.current_price for asset in self.assets])
 
         # Determine allocations
-        allocations = weights * self.budget
+        allocations = weights * transcation_prices
 
-        # Shares that are bought against the transaction price, this is the price on 31-12-2024
+        # Shares that are bought against the transaction price, this is the price on 22-05-2024
         shares = allocations / transcation_prices
 
         # Calculate current value
@@ -185,7 +185,7 @@ class Portfolio:
 
         # Show the allocation info
         print("")
-        print(f"=========== Current Portfolio Characteristics making use of the {method} method ===========")
+        print(f"=========== Current Portfolio Characteristics on 22-05-2025 ===========")
         print("")
         print(df)
         print("")
@@ -197,6 +197,8 @@ class Portfolio:
             print("Portfolio weights are w_i = 1 / |assets| for asset i \nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
         elif method == "marketcap":
             print("Portfolio weights are w_i = market_cap_i / sum_(i=1)^(#assets) market_cap_i\nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
+        elif method == "manual":
+            print("Portfolio weights are based on trading strategies")
         else: 
             print("Portfolio weights are w_i = tilde(p)_i / sum_(i=1)^(#assets) tilde(p)_i where tilde(p)_i = max(forecasted_price_i, 0)\nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
 
@@ -213,7 +215,7 @@ class Portfolio:
 
         :returns: (T * N + 1, M) array of portfolio paths
         """
-        total_steps = T * N
+        total_steps = int(T * N)
         t = np.linspace(0, T, total_steps+1)
 
         shares = df["quantity"]

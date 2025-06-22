@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Run Controller (as module)",
+        "type": "python",
+        "request": "launch",
+        // use -m control_room.Controller rather than pointing at a .py
+        "module": "control_room.Controller",
+        // make sure your cwd is the project root so that models/ is discoverable
+        "cwd": "${workspaceFolder}",
+        "justMyCode": true
+      }
+    ]
+  }
+  

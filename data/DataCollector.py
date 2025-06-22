@@ -3,6 +3,7 @@
 # Import relevant packages
 import yfinance as yf
 import pandas as pd
+from curl_cffi import requests
 
 def fetch_master_data(tickers) -> pd.DataFrame:
     r"""
@@ -17,7 +18,9 @@ def fetch_master_data(tickers) -> pd.DataFrame:
     
     :returns: DataFrame object of master data
     """
-    multi_ticker = yf.Tickers(" ".join(tickers))
+    
+    session = requests.Session(impersonate="chrome")
+    multi_ticker = yf.Tickers(" ".join(tickers), session = session)
 
     rows = []
     for ticker in tickers:
@@ -27,14 +30,15 @@ def fetch_master_data(tickers) -> pd.DataFrame:
             "sector": info.get("sector"),
             "asset_class": info.get("quoteType"),        
             "current_price": info.get("regularMarketPrice"),
-            "market_cap": info.get("marketCap"), # For asset allocation
+            "market_cap": info.get("marketCap"),
         })
 
     dataframe = pd.DataFrame(rows).set_index("ticker")
 
     return dataframe
 
-def fetch_history(tickers, start = "2015-01-01", end = "2024-12-31", interval = "1d") -> pd.DataFrame:
+# End date is based on transaction report
+def fetch_history(tickers, start = "2015-01-01", end = "2025-05-22", interval = "1d") -> pd.DataFrame:
     r"""
     Fetch the historic prices of specified stocks, use closing price of each day
 
@@ -54,6 +58,7 @@ def fetch_history(tickers, start = "2015-01-01", end = "2024-12-31", interval = 
 
     return historic_prices
 
+# For training XGBoost model for predicting stock prices
 def fetch_features(tickers, historic_prices) -> pd.DataFrame:
     r"""
     Fetch the needed features from Yahoo Finance to make them ready for preparation, the following features are chosen:

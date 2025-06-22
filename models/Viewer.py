@@ -35,6 +35,43 @@ def plot_historical_prices(historic_prices, tickers = None, show_prices = False)
     plt.tight_layout()
     plt.show()
 
+def correlation_analysis(historic_prices) -> None:
+    """
+    Correlation analysis of current stocks in our portfolio
+
+    :param historic_prices: DataFrame of past close prices of stocks
+    :returns: a nice seaborn heatmap
+    """
+    df = historic_prices
+    returns = df.pct_change().dropna()
+    corr = returns.corr()
+
+    # Print top/bottom correlated pairs (same as before)…
+    mask = np.triu(np.ones_like(corr, dtype=bool), k=1)
+    pairs = corr.where(mask)
+    strong_pairs = pairs.unstack().dropna().sort_values(ascending=False)
+    print("\nTop 3 most strongly positively correlated pairs:")
+    print(strong_pairs.head(3))
+    print("\nTop 3 most strongly negatively correlated pairs:")
+    print(strong_pairs.tail(3))
+
+    # --- New seaborn heatmap code ---
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(
+        corr,
+        mask=~mask,               # show only one triangle if you like
+        annot=True,               # numbers in each cell
+        fmt=".2f",                # 2 decimal places
+        cmap="vlag",              # blue ↔ red diverging map
+        linewidths=0.5,           # lines between cells
+        cbar_kws={"shrink": .75}  # smaller colorbar
+    )
+    plt.title("Return Correlation Matrix", fontsize=16)
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    plt.show()
+
 def plot_current_prices(master_data, tickers = None) -> None:
     r"""
     Barplot of current prices for each specified ticker
@@ -90,10 +127,10 @@ def plot_portfolio_trajectories(t, port_paths, n_paths = 10, show_mean = True ) 
     if show_mean:
         # Make confidence bands
         lower, upper = np.percentile(port_paths, [5,95], axis=1)
-        plt.fill_between(t, lower, upper, color="grey", alpha=0.3, label="Confidence Band")
+        plt.fill_between(t, lower, upper, color="grey", alpha=0.3, label=f"Confidence Band {(round(float(lower[-1]),ndigits=2), round(float(upper[-1]), ndigits=2))}")
         #Show Mean
         mean_path = port_paths.mean(axis=1)
-        plt.plot(t, mean_path, color="black", linewidth=2, label="Mean")
+        plt.plot(t, mean_path, color="black", linewidth=2, label=f"Mean {round(mean_path[-1],ndigits=2)}")
         plt.legend(title="Simulation", loc="upper left")
 
     plt.title("Simulated Portfolio Value Paths")
@@ -153,7 +190,8 @@ def compute_solvency_capital_requirement(port_paths, days_per_year = 252, alpha 
     # Find the (100 - alpha)% percentile of V1y, i.e. bottom (100-alpha)% tail
     tail_pct = 100 - alpha
     floor_value = np.percentile(value_1year, tail_pct)
-
+    print(initial_value)
+    print(floor_value)
     # Capital buffer required
     scr = initial_value - floor_value
     return scr
