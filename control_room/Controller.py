@@ -8,6 +8,7 @@ from extra.rare_events import *
 
 # Define the tickers in our portfolio
 current_portfolio = ["AIR.PA", "DJDA.BE", "ENR.DE", "ZAL.DE", "PODD", "SNA", "TPL", "TSLA", "ISRG", "BIDU", "CNC"]
+#comment
 
 # Define total amount of years T and number of paths M to simulate. We assume daily (252) returns
 T, M = 1, 100000
