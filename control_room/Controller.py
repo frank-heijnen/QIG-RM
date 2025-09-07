@@ -4,6 +4,7 @@
 from models.Portfolio import Stock, Portfolio
 from data.DataCollector import *
 from models.Viewer import *
+from extra.rare_events import *
 
 # Define the tickers in our portfolio
 current_portfolio = ["AIR.PA", "DJDA.BE", "ENR.DE", "ZAL.DE", "PODD", "SNA", "TPL", "TSLA", "ISRG", "BIDU", "CNC"]
@@ -71,6 +72,48 @@ def main():
     # Further calculate the 1 year 99.5 VaR, this is the required buffer used in Solvency II to stay solvent in case of a rare event happening.
     scr_1y = compute_solvency_capital_requirement(port_paths, days_per_year=252, alpha=99.5)
     print(f"SCR: 1y 99.5% VaR = €{scr_1y:,.0f}")
+
+    try:
+        shares = df.loc[current_portfolio, "quantity"].values
+        res = simulate_portfolio_tail(
+            historic_prices,
+            current_portfolio,
+            T=T, M=M, N=252,
+            shares=shares,   # <— uses your actual holdings
+            # weights=None, budget=None,
+            nu=5.0, p_sys=0.01, mu_sys=0, sigma_sys=0.06,
+            p_idio=0.003, mu_idio=-0.06, sigma_idio=0.12,
+            importance_tilt=0.05
+        )
+    except Exception:
+        # fall back to weights+budget
+        res = simulate_portfolio_tail(
+            historic_prices,
+            current_portfolio,
+            T=T, M=M, N=252,
+            weights=weights, budget=budget,
+            nu=5.0, p_sys=0.01, mu_sys=0, sigma_sys=0.06,
+            p_idio=0.003, mu_idio=-0.06, sigma_idio=0.12,
+            importance_tilt=0.05
+        )
+
+    # Use results
+    print("\n[RARE-EVENT] Dropped (insufficient data):", res["dropped"])
+    print("[RARE-EVENT] VaR/ES:", res["metrics"])
+    print("[RARE-EVENT] MaxDD:", res["dd_stats"])
+
+    # Optional: reuse your existing plotting helpers
+    plot_worst_paths(res["sim"]["t"], res["V_paths"], k=20)
+    histogram_uncertainty(res["V_paths"])
+    V_paths_tail = res["V_paths"]
+    sim_tail     = res["sim"]
+
+    # Useful views (no spaghetti)
+    plot_loss_exceedance(V_paths_tail, weights=sim_tail["weights"], horizon=252)
+    plot_fan_chart(V_paths_tail, weights=sim_tail["weights"])
+    plot_es_path(V_paths_tail, weights=sim_tail["weights"], horizon=252, alpha=99.5)
+    plot_drawdown_heatmap(V_paths_tail, weights=sim_tail["weights"], horizon=252, alpha=99.5, top_k=200)
+            
 
     # # Implement ML, read corresponding section in README.md before continuing
     # portfolio.train_forecaster(historic_prices)

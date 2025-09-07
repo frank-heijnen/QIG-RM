@@ -8,6 +8,103 @@ import seaborn as sns
 
 sns.set(style="whitegrid")
 
+
+def plot_loss_exceedance(V_paths, weights=None, horizon=252, title="Loss Exceedance (Survival)"):
+    """
+    Survival function of losses at horizon: P(Loss > x).
+    Shows VaR/ES markers at 95%, 99%, 99.5%.
+    """
+    V0 = V_paths[0,:]
+    Vh = V_paths[horizon,:]
+    loss = V0 - Vh
+    order = np.argsort(loss)
+    x = loss[order]
+    if weights is None:
+        w = np.ones_like(x, float)
+    else:
+        w = np.asarray(weights, float)[order]
+    cw = np.cumsum(w)
+    sf = 1.0 - cw / cw[-1]  # survival function
+
+    plt.figure()
+    plt.plot(x, sf)
+    for a in (95.0, 99.0, 99.5):
+        # weighted quantile
+        cutoff = a/100.0 * cw[-1]
+        i = np.searchsorted(cw, cutoff)
+        i = min(max(i,0), len(x)-1)
+        var = x[i]
+        plt.axvline(var, linestyle="--")
+        plt.text(var, 0.5, f"VaR {a:.1f}% = {var:,.0f}", rotation=90, va="center")
+    plt.xlabel("Loss at horizon")
+    plt.ylabel("P(Loss > x)")
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+
+def plot_fan_chart(V_paths, weights=None, title="Portfolio Value: Fan Chart"):
+    """
+    Fan chart of weighted quantiles over time, plus median.
+    """
+    from extra.rare_events import fan_stats
+    st = fan_stats(V_paths, weights)
+    t = st['t']
+    qs = st['qs']
+    Q = st['q']  # shape (len(qs), T+1)
+    plt.figure()
+    # shaded bands between 1-99, 5-95, 25-75
+    bands = [(0.01,0.99),(0.05,0.95),(0.25,0.75)]
+    for lo,hi in bands:
+        i_lo = np.where(np.isclose(qs, lo))[0][0]
+        i_hi = np.where(np.isclose(qs, hi))[0][0]
+        plt.fill_between(t, Q[i_lo], Q[i_hi], alpha=0.15)
+    # median
+    i_med = np.where(np.isclose(qs, 0.5))[0][0]
+    plt.plot(t, Q[i_med], linewidth=1.5)
+    plt.xlabel("Time step")
+    plt.ylabel("Portfolio value")
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+
+def plot_es_path(V_paths, weights=None, horizon=252, alpha=99.5, title=None):
+    """
+    Expected Shortfall path: average trajectory of tail scenarios at horizon.
+    """
+    from extra.rare_events import tail_set, es_path
+    tail_idx, var = tail_set(V_paths, horizon=horizon, alpha=alpha, weights=weights)
+    esp = es_path(V_paths, tail_idx, weights)
+    med = np.median(V_paths, axis=1)
+    plt.figure()
+    t = np.arange(V_paths.shape[0])
+    plt.plot(t, med, label="Median path")
+    plt.plot(t, esp, label=f"ES path (tail @ {alpha}%, H={horizon}d)")
+    plt.legend()
+    plt.xlabel("Time step")
+    plt.ylabel("Portfolio value")
+    if title is None:
+        title = f"Median vs Expected-Shortfall Path (alpha={alpha}%)"
+    plt.title(title)
+    plt.grid(True, alpha=0.3)
+
+def plot_drawdown_heatmap(V_paths, weights=None, horizon=252, alpha=99.5, top_k=200, title=None):
+    """
+    Heatmap of drawdowns over time for the worst scenarios (ranked by final loss).
+    Rows = scenarios, columns = time; darker = deeper drawdown.
+    """
+    V0 = V_paths[0,:]
+    Vh = V_paths[horizon,:]
+    losses = V0 - Vh
+    order = np.argsort(losses)[::-1]  # worst first
+    sel = order[:min(top_k, V_paths.shape[1])]
+    DD = 100.0 * (1.0 - V_paths[:, sel] / np.maximum.accumulate(V_paths[:, sel], axis=0))
+    plt.figure(figsize=(8, 6))
+    plt.imshow(DD.T, aspect="auto", origin="lower", interpolation="nearest")
+    plt.colorbar(label="Drawdown (%)")
+    plt.ylabel(f"Worst {len(sel)} scenarios")
+    plt.xlabel("Time step")
+    if title is None:
+        title = f"Drawdown Heatmap — worst {len(sel)} scenarios (ranked by loss @ H={horizon}d)"
+    plt.title(title)
+    
 def plot_historical_prices(historic_prices, tickers = None, show_prices = False) -> None:
     r"""
     Plot past price trajectories for one or more tickers
