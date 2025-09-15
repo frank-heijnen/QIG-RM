@@ -17,7 +17,7 @@ funds = [
     "QUAL",  # iShares Edge MSCI USA Quality Factor ETF
     "QDIV",  # Global X S&P 500 Quality Dividend ETF
     "QDF",   # Global X S&P 500 Dividend ETF
-    "QGEN",  # Global X Genomics & Biotechnology ETF
+    "GNOM",  # Global X Genomics & Biotechnology ETF
     "QYLD",  # Global X NASDAQ 100 Covered Call ETF
     "QRFT",  # Global X Robotics & AI ETF
     "QTEC",  # NASDAQ-100 Technology Sector Index ETF
@@ -25,7 +25,7 @@ funds = [
     "QLD",   # ProShares Ultra QQQ
     "QDEF",  # ALPS Quantitative Defensive Equity ETF
     "QED",   # Global X Artificial Intelligence ETF
-    "JPUS"   # JPMorgan Diversified Return U.S. Equity ETF (replacement for QUSF)
+    "JPUS"   # JPMorgan Diversified Return U.S. Equity ETF 
 ]
 
 benchmark = "SPY"  # S&P 500
@@ -119,16 +119,14 @@ print("\nRisk Metrics vs SPY:\n", df_results)
 avg_var = df_results["VaR 95% (rel)"].mean()
 avg_cvar = df_results["CVaR 95% (rel)"].mean()
 avg_avg10 = df_results["Avg 10 Worst Drawdowns (rel to SPY %)"].mean()
-
-# Exclude QGEN outlier for avg as it was an individual stock and not an ETF
-df_no_outlier = df_results[df_results["Fund"] != "QGEN"]
-avg_avg10_no_outlier = df_no_outlier["Avg 10 Worst Drawdowns (rel to SPY %)"].mean()
+avg_mdd = df_results["Max Drawdown (rel to SPY)"].mean()
 
 print("\n--- Summary Stats ---")
 print(f"Average VaR (95%, relative): {avg_var:.2%}")
 print(f"Average CVaR (95%, relative): {avg_cvar:.2%}")
 print(f"Average of Avg 10 Worst Drawdowns (all funds): {avg_avg10:.2f}%")
-print(f"Average of Avg 10 Worst Drawdowns (excl QGEN): {avg_avg10_no_outlier:.2f}%")
+print(f"Average Max Drawdowns: {avg_mdd:.2f}%")
+
 
 # -----------------------------
 # Plotting graph
