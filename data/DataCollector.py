@@ -38,7 +38,7 @@ def fetch_master_data(tickers) -> pd.DataFrame:
     return dataframe
 
 # End date is based on transaction report
-def fetch_history(tickers, start = "2015-01-01", end = "2025-05-22", interval = "1d") -> pd.DataFrame:
+def fetch_history(tickers, start = "2015-01-01", end = "2025-08-20", interval = "1d") -> pd.DataFrame:
     r"""
     Fetch the historic prices of specified stocks, use closing price of each day
 

@@ -7,7 +7,7 @@ from models.Viewer import *
 from extra.rare_events import *
 
 # Define the tickers in our portfolio
-current_portfolio = ["AIR.PA", "DJDA.BE", "ENR.DE", "ZAL.DE", "PODD", "SNA", "TPL", "TSLA", "ISRG", "BIDU", "CNC"]
+current_portfolio = ["AIR.PA", "ARGX", "DB1.DE", "DTE.DE", "ENR.DE", "RHM.DE", "BIDU", "CHTR", "CNC", "GL", "HOLX", "ISRG", "PLTR", "SNA", "TPL", "VRSN"]
 
 # Define total amount of years T and number of paths M to simulate. We assume daily (252) returns
 T, M = 1, 100000
@@ -128,16 +128,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    # Scrap paper
-    # weights = np.array([3.0927, 2.3174, 5.8055, 11.6446, 1.5286, 1.2794, 0.3141, 1.4641, 1.4286, 7.6673, 7.5068], dtype=float)
-    # report_prices = np.array(
-    #     [161.26,183.40,81.68,30.58,321,321.14,1278.90,341.04,542.67,84.07,58.07]
-    # )
-    # recent_prices = np.array([
-    # 162.100006, 181.761581,  79.160004,  30.290001, 324.500000,
-    # 322.119995, 1353.713013, 334.619995, 547.070007,  85.480003,
-    #  60.740002
-    # ])
-    # holdings = weights * report_prices
-    # holdings1 = weights * recent_prices

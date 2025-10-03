@@ -111,7 +111,7 @@ class Portfolio:
         if method == "equal":
             weights = np.repeat(1 / len(self.assets), len(self.assets))
         elif method == "manual": # For manual input
-            weights = np.array([3.0927, 2.3174, 5.8055, 11.6446, 1.5286, 1.2794, 0.3141, 1.4641, 1.4286, 7.6673, 7.5068], dtype=float)
+            weights = np.array([3.0927, 0.5151, 1.0948, 9.7055, 3.6055, 0.1739, 7.6673, 0.7232, 7.5068, 2.3549, 10.7137, 1.4286, 1.9274, 2.1025, 0.2733, 1.004], dtype=float)
         elif method == "marketcap":
             caps = np.array([asset.market_cap for asset in self.assets], dtype=float)
             weights = caps / caps.sum()
@@ -185,7 +185,7 @@ class Portfolio:
 
         # Show the allocation info
         print("")
-        print(f"=========== Current Portfolio Characteristics on 22-05-2025 ===========")
+        print(f"=========== Current Portfolio Characteristics on 20-08-2025 ===========")
         print("")
         print(df)
         print("")
