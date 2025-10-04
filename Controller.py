@@ -4,7 +4,7 @@
 from models.Portfolio import Stock, Portfolio
 from data.DataCollector import *
 from models.Viewer import *
-from extra.rare_events import *
+from StressTesting.rare_events import *
 
 # Define the tickers in our portfolio
 current_portfolio = ["AIR.PA", "ARGX", "DB1.DE", "DTE.DE", "ENR.DE", "RHM.DE", "BIDU", "CHTR", "CNC", "GL", "HOLX", "ISRG", "PLTR", "SNA", "TPL", "VRSN"]

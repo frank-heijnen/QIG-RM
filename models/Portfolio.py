@@ -45,7 +45,7 @@ class Stock:
 
         return mu, sigma
 
-    def simulate_stock(self, T, M, N=252) -> tuple:
+    def simulate_stock_GBM(self, T, M, N=252) -> tuple:
         r"""
         Simulate stock prices of Stock object according to Geometric Brownian Motion for simplicity:
  
@@ -185,7 +185,9 @@ class Portfolio:
 
         # Show the allocation info
         print("")
-        print(f"=========== Current Portfolio Characteristics on 20-08-2025 ===========")
+        print("=========== Current Portfolio Characteristics on 20-08-2025 ===========")
+        print("")
+        print(f"Portfolio Value after Purchase in USD: ${np.sum(df["quantity"] * df["purchase price"]):,.2f}")
         print("")
         print(df)
         print("")
@@ -202,9 +204,24 @@ class Portfolio:
         else: 
             print("Portfolio weights are w_i = tilde(p)_i / sum_(i=1)^(#assets) tilde(p)_i where tilde(p)_i = max(forecasted_price_i, 0)\nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
 
+        # How many different sectors including sector count
+        print("")
+        print(f"========== Sector concentration ==========")
+        print("")
+        df2 = (
+            df['sector']
+            .value_counts()
+            .rename_axis('sector')
+            .reset_index(name='count')
+            .sort_values('count', ascending=False)
+            .reset_index(drop=True)
+        )
+        print(df2)
+        print("")
+        
         return df
 
-    def simulate_portfolio(self, df: pd.DataFrame, T, M, N=252) -> tuple:
+    def simulate_portfolio_GBM(self, df: pd.DataFrame, T, M, N=252) -> tuple:
         r"""
         Simulate the portfolio over T years, with N steps per year, M paths, by simulating its individual stocks 
 
@@ -224,9 +241,72 @@ class Portfolio:
 
         for asset in self.assets:
             # call the instance method on each Stock
-            _, S = asset.simulate_stock(T, M)
+            _, S = asset.simulate_stock_GBM(T, M)
             port_paths += S * shares.loc[asset.ticker]
         
+        return t, port_paths
+
+    # Helper function
+    def _nearest_psd(A, eps=1e-12):
+        """Project a symmetric matrix to the nearest PSD by flooring eigenvalues at 0."""
+        B = (A + A.T) / 2.0
+        vals, vecs = np.linalg.eigh(B)
+        vals[vals < 0] = 0.0
+        return (vecs * vals) @ vecs.T + eps * np.eye(B.shape[0])
+
+    def simulate_portfolio_GBM_correlated(self, df: pd.DataFrame, prices: pd.DataFrame, T: float, M: int, N: int = 252):
+        r"""
+        Correlated GBM simulation for the whole portfolio using a Cholesky-based correlation structure.
+
+        :params df: DataFrame with portfolio info; must include columns ['quantity', 'current value'] and be indexed by tickers matching `prices`.
+        :params prices: DataFrame of adjusted close price history; columns = tickers (same order as df.index), rows = dates.
+        :params T: Horizon in years (e.g., 1.0).
+        :params N: Number of steps per year (trading days, default 252).
+        :params M: Number of Monte Carlo paths.
+
+        :returns: (t, port_paths) where
+                - t is an np.ndarray of shape (steps + 1,) with the time grid in years,
+                - port_paths is an np.ndarray of shape (steps + 1, M) with simulated portfolio value paths.
+        """
+        tickers = list(df.index)
+        px = prices[tickers].dropna(how="any")
+
+        # --- Estimate parameters from history (annualized) ---
+        logret = np.log(px).diff().dropna()
+        mu = (logret.mean() * 252.0).to_numpy()             # shape (A,)
+        sigma = (logret.std() * np.sqrt(252.0)).to_numpy()  # shape (A,)
+        Corr = logret.corr().to_numpy()
+
+        # Ensure PSD and get Cholesky
+        Corr_psd = _nearest_psd(Corr)
+        L = np.linalg.cholesky(Corr_psd)
+
+        # --- Setup vectors/mats ---
+        A = len(tickers)
+        steps = int(T * N)
+        dt = 1.0 / N
+
+        shares = df["quantity"].to_numpy(dtype=float)                       # shape (A,)
+        S0 = df["purchase price"].to_numpy(dtype=float)   # current price per asset
+
+        drift = (mu - 0.5 * sigma**2)[:, None] * dt              # shape (A,1)
+        vol_step = (sigma * np.sqrt(dt))[:, None]                 # shape (A,1)
+
+        # Prices: shape (A, steps+1, M)
+        S = np.empty((A, steps + 1, M), dtype=float)
+        S[:, 0, :] = S0[:, None]
+
+        # --- Simulate correlated shocks and evolve GBMs ---
+        rng = np.random.default_rng()
+        for t_idx in range(steps):
+            Z = rng.standard_normal(size=(A, M))         # iid N(0,1)
+            eps = L @ Z                                   # correlated shocks (A,M)
+            S[:, t_idx + 1, :] = S[:, t_idx, :] * np.exp(drift + vol_step * eps)
+
+        # Portfolio value paths: sum(shares * prices) over assets
+        port_paths = (shares[:, None, None] * S).sum(axis=0)     # (steps+1, M)
+        t = np.linspace(0.0, T, steps + 1)
+
         return t, port_paths
     
     def train_forecaster(self, historic_prices: pd.DataFrame, test_size: float = 0.2, random_state: int = 0) -> None:
