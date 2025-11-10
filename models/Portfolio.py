@@ -1,6 +1,7 @@
 # Import relevant packages
 import numpy as np
 import pandas as pd
+from arch import arch_model
 from dataclasses import dataclass
 from data.DataCollector   import fetch_features, fetch_history
 from models.ML_Model      import prepare_training_data, train_GBR, predict_next_returns
@@ -111,7 +112,7 @@ class Portfolio:
         if method == "equal":
             weights = np.repeat(1 / len(self.assets), len(self.assets))
         elif method == "manual": # For manual input
-            weights = np.array([3.0927, 0.5151, 1.0948, 9.7055, 3.6055, 0.1739, 7.6673, 0.7232, 7.5068, 2.3549, 10.7137, 1.4286, 1.9274, 2.1025, 0.2733, 1.004], dtype=float)
+            weights = np.array([0.274, 6.000, 3.7632, 0.2265, 23.1614, 12.4613, 6.8539, 2.4376, 2.5795, 1.4817, 4.0667, 1.0724, 4.4824, 1.1317, 27.4941], dtype=float)
         elif method == "marketcap":
             caps = np.array([asset.market_cap for asset in self.assets], dtype=float)
             weights = caps / caps.sum()
@@ -166,17 +167,14 @@ class Portfolio:
         # Determine allocations
         allocations = weights * transcation_prices
 
-        # Shares that are bought against the transaction price, this is the price on 22-05-2024
-        shares = allocations / transcation_prices
-
         # Calculate current value
-        current_value = shares * current_prices
+        current_value = weights * current_prices
 
         # Construct dataframe containing desired info
         df = pd.DataFrame({
             "sector": np.array(asset.sector for asset in self.assets),
             "asset class": np.array(asset.asset_class for asset in self.assets),
-            "quantity": shares,
+            "quantity": weights,
             "purchase price": transcation_prices,
             "weight": weights,
             "transaction value": allocations,
@@ -185,9 +183,11 @@ class Portfolio:
 
         # Show the allocation info
         print("")
-        print("=========== Current Portfolio Characteristics on 20-08-2025 ===========")
+        print("=========== Current Portfolio Characteristics on 16-10-2025 ===========")
         print("")
         print(f"Portfolio Value after Purchase in USD: ${np.sum(df["quantity"] * df["purchase price"]):,.2f}")
+        print("")
+        print(f"Portfolio Value currently in USD: ${np.sum(df["current value"]):,.2f}")
         print("")
         print(df)
         print("")
@@ -204,10 +204,6 @@ class Portfolio:
         else: 
             print("Portfolio weights are w_i = tilde(p)_i / sum_(i=1)^(#assets) tilde(p)_i where tilde(p)_i = max(forecasted_price_i, 0)\nPortfolio value = sum_(i=1)^(#assets) w_i * budget")
 
-        # How many different sectors including sector count
-        print("")
-        print(f"========== Sector concentration ==========")
-        print("")
         df2 = (
             df['sector']
             .value_counts()
@@ -216,6 +212,27 @@ class Portfolio:
             .sort_values('count', ascending=False)
             .reset_index(drop=True)
         )
+        # Calculate HHI based on sector current values
+        total_value = df["current value"].sum()
+        sector_values = df.groupby("sector")["current value"].sum()
+        sector_weights = sector_values / total_value
+
+        # Herfindahl–Hirschman Index (HHI)
+        hhi = np.sum(sector_weights ** 2)
+
+        # Append HHI as a separate row to df2
+        df2 = pd.concat(
+            [
+                df2,
+                pd.DataFrame({"sector": ["HHI (sector concentration)"], "count": [round(hhi*10000)]})
+            ],
+            ignore_index=True
+        )
+
+        # How many different sectors including sector count
+        print("")
+        print(f"========== Sector concentration ==========")
+        print("")
         print(df2)
         print("")
         
@@ -247,7 +264,7 @@ class Portfolio:
         return t, port_paths
 
     # Helper function
-    def _nearest_psd(A, eps=1e-12):
+    def _nearest_psd(self, A, eps=1e-12):
         """Project a symmetric matrix to the nearest PSD by flooring eigenvalues at 0."""
         B = (A + A.T) / 2.0
         vals, vecs = np.linalg.eigh(B)
@@ -278,7 +295,7 @@ class Portfolio:
         Corr = logret.corr().to_numpy()
 
         # Ensure PSD and get Cholesky
-        Corr_psd = _nearest_psd(Corr)
+        Corr_psd = self._nearest_psd(Corr)
         L = np.linalg.cholesky(Corr_psd)
 
         # --- Setup vectors/mats ---
@@ -306,6 +323,65 @@ class Portfolio:
         # Portfolio value paths: sum(shares * prices) over assets
         port_paths = (shares[:, None, None] * S).sum(axis=0)     # (steps+1, M)
         t = np.linspace(0.0, T, steps + 1)
+
+        return t, port_paths
+    
+    def simulate_portfolio_GARCH11(self, df: pd.DataFrame, prices: pd.DataFrame, 
+                                T: float, M: int, N: int = 252):
+        """
+        Simulate portfolio value paths using univariate GARCH(1,1) volatility dynamics per asset.
+
+        :params df: DataFrame with portfolio info; must include 'quantity' and 'current value', indexed by tickers.
+        :params prices: DataFrame of adjusted close prices (columns = tickers, rows = dates).
+        :params T: Time horizon in years (e.g., 1.0).
+        :params M: Number of Monte Carlo paths.
+        :params N: Number of time steps per year (default 252).
+        
+        :returns: (t, port_paths)
+                t -> np.ndarray of time steps (length = N+1)
+                port_paths -> np.ndarray of simulated portfolio values (shape = (N+1, M))
+        """
+
+        tickers = list(df.index)
+        px = prices[tickers].dropna(how="any")
+        logret = np.log(px).diff().dropna()
+
+        steps = int(T * N)
+        dt = 1 / N
+
+        # Precompute quantities and prices
+        shares = df["quantity"].to_numpy(dtype=float)
+        S0 = df["current value"].to_numpy(dtype=float) / shares
+
+        # Storage for simulations
+        port_paths = np.zeros((steps + 1, M))
+        port_paths[0, :] = np.sum(shares * S0)
+
+        # Simulate each asset's GARCH(1,1)
+        simulated_paths = np.zeros((steps + 1, len(tickers), M))
+
+        for i, ticker in enumerate(tickers):
+            returns = logret[ticker].dropna()
+            model = arch_model(returns, mean='constant', vol='GARCH', p=1, q=1, rescale=False)
+            fitted = model.fit(disp='off')
+
+            # Simulate one path at a time (arch >= 6.x doesn’t accept repetitions)
+            sim_returns = np.zeros((steps, M))
+
+            for m in range(M):
+                sim = model.simulate(fitted.params, nobs=steps)
+                sim_returns[:, m] = sim['data']
+
+            simulated_prices = S0[i] * np.exp(np.cumsum(sim_returns, axis=0))
+            simulated_paths[1:, i, :] = simulated_prices
+
+
+        # Compute total portfolio value per simulation
+        for m in range(M):
+            port_paths[1:, m] = np.sum(simulated_paths[1:, :, m] * shares, axis=1)
+
+        # Time vector
+        t = np.linspace(0, T, steps + 1)
 
         return t, port_paths
     
