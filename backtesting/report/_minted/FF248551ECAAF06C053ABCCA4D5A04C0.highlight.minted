@@ -1,0 +1,31 @@
+\begin{MintedVerbatim}[commandchars=\\\{\}]
+\PYG{n+nt}{strategy}\PYG{p}{:}
+\PYG{+w}{  }\PYG{n+nt}{class}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{MomentumStrategy}
+\PYG{+w}{  }\PYG{n+nt}{parameters}\PYG{p}{:}
+\PYG{+w}{    }\PYG{n+nt}{lookback}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{60}
+\PYG{+w}{    }\PYG{n+nt}{top\PYGZus{}quantile}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{0.2}
+\PYG{+w}{    }\PYG{n+nt}{rebalance\PYGZus{}frequency}\PYG{p}{:}\PYG{+w}{ }\PYG{l+s}{\PYGZdq{}}\PYG{l+s}{1M}\PYG{l+s}{\PYGZdq{}}
+
+\PYG{n+nt}{data}\PYG{p}{:}
+\PYG{+w}{  }\PYG{n+nt}{universe}\PYG{p}{:}\PYG{+w}{ }\PYG{l+s}{\PYGZdq{}}\PYG{l+s}{sp500}\PYG{l+s}{\PYGZdq{}}
+\PYG{+w}{  }\PYG{n+nt}{freq}\PYG{p}{:}\PYG{+w}{ }\PYG{l+s}{\PYGZdq{}}\PYG{l+s}{1D}\PYG{l+s}{\PYGZdq{}}
+\PYG{+w}{  }\PYG{n+nt}{source}\PYG{p}{:}\PYG{+w}{ }\PYG{l+s}{\PYGZdq{}}\PYG{l+s}{local\PYGZus{}parquet}\PYG{l+s}{\PYGZdq{}}
+\PYG{+w}{  }\PYG{n+nt}{include\PYGZus{}delisted}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{true}
+
+\PYG{n+nt}{execution}\PYG{p}{:}
+\PYG{+w}{  }\PYG{n+nt}{slippage\PYGZus{}bps}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{3}
+\PYG{+w}{  }\PYG{n+nt}{fees\PYGZus{}bps}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{1}
+\PYG{+w}{  }\PYG{n+nt}{trade\PYGZus{}at\PYGZus{}open}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{true}
+
+\PYG{n+nt}{risk}\PYG{p}{:}
+\PYG{+w}{  }\PYG{n+nt}{vol\PYGZus{}target}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{0.15}
+\PYG{+w}{  }\PYG{n+nt}{max\PYGZus{}leverage}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{2.0}
+
+\PYG{n+nt}{backtest}\PYG{p}{:}
+\PYG{+w}{  }\PYG{n+nt}{start}\PYG{p}{:}\PYG{+w}{ }\PYG{l+s}{\PYGZdq{}}\PYG{l+s}{2015\PYGZhy{}01\PYGZhy{}01}\PYG{l+s}{\PYGZdq{}}
+\PYG{+w}{  }\PYG{n+nt}{end}\PYG{p}{:}\PYG{+w}{ }\PYG{l+s}{\PYGZdq{}}\PYG{l+s}{2024\PYGZhy{}12\PYGZhy{}31}\PYG{l+s}{\PYGZdq{}}
+\PYG{+w}{  }\PYG{n+nt}{initial\PYGZus{}capital}\PYG{p}{:}\PYG{+w}{ }\PYG{l+lScalar+lScalarPlain}{1000000}
+
+\PYG{n+nt}{output}\PYG{p}{:}
+\PYG{+w}{  }\PYG{n+nt}{path}\PYG{p}{:}\PYG{+w}{ }\PYG{l+s}{\PYGZdq{}}\PYG{l+s}{results/mom60/}\PYG{l+s}{\PYGZdq{}}
+\end{MintedVerbatim}

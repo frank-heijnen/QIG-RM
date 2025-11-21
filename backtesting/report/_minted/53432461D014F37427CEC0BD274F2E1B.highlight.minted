@@ -1,0 +1,14 @@
+\begin{MintedVerbatim}[commandchars=\\\{\}]
+\PYG{k}{class}\PYG{+w}{ }\PYG{n+nc}{MomentumStrategy}\PYG{p}{(}\PYG{n}{Strategy}\PYG{p}{)}\PYG{p}{:}
+    \PYG{k}{def}\PYG{+w}{ }\PYG{n+nf+fm}{\PYGZus{}\PYGZus{}init\PYGZus{}\PYGZus{}}\PYG{p}{(}\PYG{n+nb+bp}{self}\PYG{p}{,} \PYG{n}{lookback}\PYG{p}{,} \PYG{n}{top\PYGZus{}quantile}\PYG{p}{,} \PYG{n}{rebalance\PYGZus{}frequency}\PYG{p}{)}\PYG{p}{:}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{lookback} \PYG{o}{=} \PYG{n}{lookback}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{top\PYGZus{}quantile} \PYG{o}{=} \PYG{n}{top\PYGZus{}quantile}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{rebalance\PYGZus{}frequency} \PYG{o}{=} \PYG{n}{rebalance\PYGZus{}frequency}
+
+    \PYG{k}{def}\PYG{+w}{ }\PYG{n+nf}{generate\PYGZus{}signals}\PYG{p}{(}\PYG{n+nb+bp}{self}\PYG{p}{,} \PYG{n}{data}\PYG{p}{)}\PYG{p}{:}
+        \PYG{n}{returns} \PYG{o}{=} \PYG{n}{data}\PYG{p}{[}\PYG{l+s+s2}{\PYGZdq{}}\PYG{l+s+s2}{Close}\PYG{l+s+s2}{\PYGZdq{}}\PYG{p}{]}\PYG{o}{.}\PYG{n}{pct\PYGZus{}change}\PYG{p}{(}\PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{lookback}\PYG{p}{)}
+        \PYG{n}{ranks} \PYG{o}{=} \PYG{n}{returns}\PYG{o}{.}\PYG{n}{rank}\PYG{p}{(}\PYG{n}{axis}\PYG{o}{=}\PYG{l+m+mi}{1}\PYG{p}{,} \PYG{n}{pct}\PYG{o}{=}\PYG{k+kc}{True}\PYG{p}{)}
+        \PYG{n}{long}  \PYG{o}{=} \PYG{p}{(}\PYG{n}{ranks} \PYG{o}{\PYGZgt{}}\PYG{o}{=} \PYG{l+m+mi}{1} \PYG{o}{\PYGZhy{}} \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{top\PYGZus{}quantile}\PYG{p}{)}\PYG{o}{.}\PYG{n}{astype}\PYG{p}{(}\PYG{n+nb}{int}\PYG{p}{)}
+        \PYG{n}{short} \PYG{o}{=} \PYG{p}{(}\PYG{n}{ranks} \PYG{o}{\PYGZlt{}}\PYG{o}{=} \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{top\PYGZus{}quantile}\PYG{p}{)}\PYG{o}{.}\PYG{n}{astype}\PYG{p}{(}\PYG{n+nb}{int}\PYG{p}{)} \PYG{o}{*} \PYG{o}{\PYGZhy{}}\PYG{l+m+mi}{1}
+        \PYG{k}{return} \PYG{n}{long} \PYG{o}{+} \PYG{n}{short}
+\end{MintedVerbatim}

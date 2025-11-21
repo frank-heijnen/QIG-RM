@@ -1,0 +1,19 @@
+\begin{MintedVerbatim}[commandchars=\\\{\}]
+\PYG{c+c1}{\PYGZsh{} backtesting/data\PYGZus{}store.py}
+\PYG{k+kn}{import}\PYG{+w}{ }\PYG{n+nn}{pandas}\PYG{+w}{ }\PYG{k}{as}\PYG{+w}{ }\PYG{n+nn}{pd}
+\PYG{k+kn}{from}\PYG{+w}{ }\PYG{n+nn}{pathlib}\PYG{+w}{ }\PYG{k+kn}{import} \PYG{n}{Path}
+
+\PYG{k}{class}\PYG{+w}{ }\PYG{n+nc}{DataStore}\PYG{p}{:}
+    \PYG{k}{def}\PYG{+w}{ }\PYG{n+nf+fm}{\PYGZus{}\PYGZus{}init\PYGZus{}\PYGZus{}}\PYG{p}{(}\PYG{n+nb+bp}{self}\PYG{p}{,} \PYG{n}{cfg}\PYG{p}{)}\PYG{p}{:}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{root} \PYG{o}{=} \PYG{n}{Path}\PYG{p}{(}\PYG{n}{cfg}\PYG{p}{[}\PYG{l+s+s2}{\PYGZdq{}}\PYG{l+s+s2}{path}\PYG{l+s+s2}{\PYGZdq{}}\PYG{p}{]}\PYG{p}{)}
+
+    \PYG{k}{def}\PYG{+w}{ }\PYG{n+nf}{load\PYGZus{}universe}\PYG{p}{(}\PYG{n+nb+bp}{self}\PYG{p}{,} \PYG{n}{cfg}\PYG{p}{)}\PYG{p}{:}
+        \PYG{n}{universe} \PYG{o}{=} \PYG{n}{cfg}\PYG{p}{[}\PYG{l+s+s2}{\PYGZdq{}}\PYG{l+s+s2}{universe}\PYG{l+s+s2}{\PYGZdq{}}\PYG{p}{]}
+        \PYG{n}{freq} \PYG{o}{=} \PYG{n}{cfg}\PYG{p}{[}\PYG{l+s+s2}{\PYGZdq{}}\PYG{l+s+s2}{freq}\PYG{l+s+s2}{\PYGZdq{}}\PYG{p}{]}
+        \PYG{n}{folder} \PYG{o}{=} \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{root} \PYG{o}{/} \PYG{l+s+sa}{f}\PYG{l+s+s2}{\PYGZdq{}}\PYG{l+s+si}{\PYGZob{}}\PYG{n}{universe}\PYG{l+s+si}{\PYGZcb{}}\PYG{l+s+s2}{\PYGZus{}}\PYG{l+s+si}{\PYGZob{}}\PYG{n}{freq}\PYG{l+s+si}{\PYGZcb{}}\PYG{l+s+s2}{\PYGZdq{}}
+        \PYG{n}{frames} \PYG{o}{=} \PYG{p}{[}
+            \PYG{n}{pd}\PYG{o}{.}\PYG{n}{read\PYGZus{}parquet}\PYG{p}{(}\PYG{n}{folder} \PYG{o}{/} \PYG{l+s+sa}{f}\PYG{l+s+s2}{\PYGZdq{}}\PYG{l+s+si}{\PYGZob{}}\PYG{n}{asset}\PYG{l+s+si}{\PYGZcb{}}\PYG{l+s+s2}{.parquet}\PYG{l+s+s2}{\PYGZdq{}}\PYG{p}{)}
+            \PYG{k}{for} \PYG{n}{asset} \PYG{o+ow}{in} \PYG{n}{cfg}\PYG{p}{[}\PYG{l+s+s2}{\PYGZdq{}}\PYG{l+s+s2}{assets}\PYG{l+s+s2}{\PYGZdq{}}\PYG{p}{]}
+        \PYG{p}{]}
+        \PYG{k}{return} \PYG{p}{\PYGZob{}}\PYG{n}{a}\PYG{p}{:} \PYG{n}{f} \PYG{k}{for} \PYG{n}{a}\PYG{p}{,} \PYG{n}{f} \PYG{o+ow}{in} \PYG{n+nb}{zip}\PYG{p}{(}\PYG{n}{cfg}\PYG{p}{[}\PYG{l+s+s2}{\PYGZdq{}}\PYG{l+s+s2}{assets}\PYG{l+s+s2}{\PYGZdq{}}\PYG{p}{]}\PYG{p}{,} \PYG{n}{frames}\PYG{p}{)}\PYG{p}{\PYGZcb{}}
+\end{MintedVerbatim}
