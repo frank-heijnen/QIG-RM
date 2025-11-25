@@ -141,7 +141,7 @@ def fetch_master_data(tickers) -> pd.DataFrame:
     return df
 
 
-def fetch_history(tickers, start="2015-01-01", end="2025-10-16", interval="1d") -> pd.DataFrame:
+def fetch_history(tickers, start="2015-01-01", end="2025-11-21", interval="1d") -> pd.DataFrame:
     r"""
     Fetch historic prices of specified stocks (daily close).
     Automatically converts non-USD tickers to USD using FX data.

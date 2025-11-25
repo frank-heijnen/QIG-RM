@@ -112,7 +112,23 @@ class Portfolio:
         if method == "equal":
             weights = np.repeat(1 / len(self.assets), len(self.assets))
         elif method == "manual": # For manual input
-            weights = np.array([0.274, 6.000, 3.7632, 0.2265, 23.1614, 12.4613, 6.8539, 2.4376, 2.5795, 1.4817, 4.0667, 1.0724, 4.4824, 1.1317, 27.4941], dtype=float)
+            weights = np.array([
+                            2.599,      # DIEb
+                            3.7632,     # ENR
+                            1.8535,     # HEId
+                            6.3816,     # PRX
+                            23.1614,    # UMI
+                            0.859,      # AXON
+                            7.6303,     # EQT
+                            6.072,      # HOLX
+                            2.4376,     # PAYC
+                            2.5795,     # PLTR
+                            13.934,     # SMCI
+                            4.0667,     # TPR
+                            9.4194,     # UAL
+                            3.8177      # WYNN
+                        ], dtype=float)
+
         elif method == "marketcap":
             caps = np.array([asset.market_cap for asset in self.assets], dtype=float)
             weights = caps / caps.sum()
@@ -183,7 +199,7 @@ class Portfolio:
 
         # Show the allocation info
         print("")
-        print("=========== Current Portfolio Characteristics on 16-10-2025 ===========")
+        print("=========== Current Portfolio Characteristics on 21-11-2025 ===========")
         print("")
         print(f"Portfolio Value after Purchase in USD: ${np.sum(df["quantity"] * df["purchase price"]):,.2f}")
         print("")
