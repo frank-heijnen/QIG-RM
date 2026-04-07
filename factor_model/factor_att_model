@@ -1,0 +1,48 @@
+import pandas as pd
+import statsmodels.api as sm
+import os
+
+# 1. YOUR DATA (Hardcoded)
+# May 2024 through November 2025 (19 months)
+port_returns = [-5.25, 3.17, 2.15, 1.21, 3.21, -0.14, 2.01, -3.63, 4.31, 
+                -8.18, -11.48, -0.66, 5.74, 0.005, -1.3, -0.55, 6.36, -0.66, -0.05]
+
+# UPDATED: Using 'ME' for Month-End frequency
+dates = pd.date_range(start='2024-05-01', periods=len(port_returns), freq='ME')
+df_port = pd.DataFrame({'Return': port_returns}, index=dates)
+
+# 2. LOAD KEN FRENCH DATA 
+# NOTE: Ensure the CSV file is in the same folder as this script!
+file_name = 'FF5_data.csv'
+
+if not os.path.exists(file_name):
+    print(f"ERROR: Could not find {file_name} in the current folder.")
+    print(f"Current working directory is: {os.getcwd()}")
+else:
+    # Load and clean
+    df_factors = pd.read_csv(file_name)
+    df_factors.rename(columns={'Unnamed: 0': 'Date'}, inplace=True)
+    df_factors['Date'] = pd.to_datetime(df_factors['Date'].astype(str), format='%Y%m%d')
+    df_factors.set_index('Date', inplace=True)
+    
+    # Convert % to decimals
+    df_factors = df_factors.apply(pd.to_numeric, errors='coerce') / 100.0
+
+    # UPDATED: Using 'ME' for compounding daily factors to monthly
+    df_factors_monthly = (1 + df_factors).resample('ME').prod() - 1
+
+    # 3. MERGE & CALCULATE EXCESS RETURNS
+    # This merges on the month-end dates
+    df_merged = pd.merge(df_port, df_factors_monthly, left_index=True, right_index=True)
+    df_merged['Excess_Ret'] = (df_merged['Return'] / 100.0) - df_merged['RF']
+
+    # 4. RUN REGRESSION
+    Y = df_merged['Excess_Ret']
+    X = df_merged[['Mkt-RF', 'SMB', 'HML', 'RMW', 'CMA']]
+    X = sm.add_constant(X)
+
+    model = sm.OLS(Y, X).fit()
+
+    # 5. PRINT RESULTS
+    print("\n--- FACTOR-BASED RISK ARCHITECTURE RESULTS ---")
+    print(model.summary())
