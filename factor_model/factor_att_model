@@ -1,48 +1,97 @@
 import pandas as pd
 import statsmodels.api as sm
 import os
+import warnings
 
-# 1. YOUR DATA (Hardcoded)
-# May 2024 through November 2025 (19 months)
+# Hide some annoying pandas formatting warnings
+warnings.filterwarnings('ignore') 
+
+# 1. YOUR DATA
 port_returns = [-5.25, 3.17, 2.15, 1.21, 3.21, -0.14, 2.01, -3.63, 4.31, 
                 -8.18, -11.48, -0.66, 5.74, 0.005, -1.3, -0.55, 6.36, -0.66, -0.05]
 
-# UPDATED: Using 'ME' for Month-End frequency
+# Create dates (Using 'M' or 'ME' depending on your Pandas version)
 dates = pd.date_range(start='2024-05-01', periods=len(port_returns), freq='ME')
 df_port = pd.DataFrame({'Return': port_returns}, index=dates)
 
-# 2. LOAD KEN FRENCH DATA 
-# NOTE: Ensure the CSV file is in the same folder as this script!
-file_name = 'FF5_data.csv'
-
+# 2. LOAD KEN FRENCH DATA
+# NOTE: Update this path if your file is named something else
+import os
+# This finds the folder the script is in, and looks for the CSV right next to it
+file_name = os.path.join(os.path.dirname(__file__), 'FF5_data.csv') 
 if not os.path.exists(file_name):
-    print(f"ERROR: Could not find {file_name} in the current folder.")
-    print(f"Current working directory is: {os.getcwd()}")
-else:
-    # Load and clean
-    df_factors = pd.read_csv(file_name)
-    df_factors.rename(columns={'Unnamed: 0': 'Date'}, inplace=True)
-    df_factors['Date'] = pd.to_datetime(df_factors['Date'].astype(str), format='%Y%m%d')
-    df_factors.set_index('Date', inplace=True)
+    print(f"Make sure {file_name} is in the same folder as this script!")
+
+df_factors = pd.read_csv(file_name)
+df_factors.rename(columns={'Unnamed: 0': 'Date'}, inplace=True)
+df_factors['Date'] = pd.to_datetime(df_factors['Date'].astype(str), format='%Y%m%d', errors='coerce')
+df_factors = df_factors.dropna(subset=['Date'])
+df_factors.set_index('Date', inplace=True)
+
+# Convert % to decimals and compound to monthly
+df_factors = df_factors.apply(pd.to_numeric, errors='coerce') / 100.0
+df_factors_monthly = (1 + df_factors).resample('ME').prod() - 1
+
+# 3. MERGE & CALCULATE EXCESS RETURNS
+df_merged = pd.merge(df_port, df_factors_monthly, left_index=True, right_index=True)
+df_merged['Excess_Ret'] = (df_merged['Return'] / 100.0) - df_merged['RF']
+
+Y = df_merged['Excess_Ret']
+X = df_merged[['Mkt-RF', 'SMB', 'HML', 'RMW', 'CMA']]
+X = sm.add_constant(X)
+
+# 4. CUSTOM ROLLING REGRESSION (12-Month Window)
+window_size = 12
+results = []
+
+# Loop through the data month by month starting at month 12
+for i in range(window_size, len(df_merged) + 1):
+    end_idx = i
+    start_idx = i - window_size
     
-    # Convert % to decimals
-    df_factors = df_factors.apply(pd.to_numeric, errors='coerce') / 100.0
+    # Slice the 12 months of data for this specific window
+    y_window = Y.iloc[start_idx:end_idx]
+    x_window = X.iloc[start_idx:end_idx]
+    
+    # Run the regression for just this 12-month slice
+    model = sm.OLS(y_window, x_window).fit()
+    
+    # Save the results to a dictionary
+    res = {
+        'Date': df_merged.index[end_idx-1].strftime('%Y-%m-%d'),
+        'R-Squared': model.rsquared,
+        
+        # Betas (Coefficients)
+        'Alpha': model.params['const'],
+        'Beta_Mkt': model.params['Mkt-RF'],
+        'Beta_SMB': model.params['SMB'],
+        'Beta_HML': model.params['HML'],
+        'Beta_RMW': model.params['RMW'],
+        'Beta_CMA': model.params['CMA'],
+        
+        # P-Values (Significance)
+        'Pval_Alpha': model.pvalues['const'],
+        'Pval_Mkt': model.pvalues['Mkt-RF'],
+        'Pval_SMB': model.pvalues['SMB'],
+        'Pval_HML': model.pvalues['HML'],
+        'Pval_RMW': model.pvalues['RMW'],
+        'Pval_CMA': model.pvalues['CMA']
+    }
+    results.append(res)
 
-    # UPDATED: Using 'ME' for compounding daily factors to monthly
-    df_factors_monthly = (1 + df_factors).resample('ME').prod() - 1
+# 5. FORMAT AND PRINT RESULTS
+# Convert results to a DataFrame
+df_results = pd.DataFrame(results).set_index('Date')
 
-    # 3. MERGE & CALCULATE EXCESS RETURNS
-    # This merges on the month-end dates
-    df_merged = pd.merge(df_port, df_factors_monthly, left_index=True, right_index=True)
-    df_merged['Excess_Ret'] = (df_merged['Return'] / 100.0) - df_merged['RF']
+# Tell Pandas to print all columns without cutting them off
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 1000)
 
-    # 4. RUN REGRESSION
-    Y = df_merged['Excess_Ret']
-    X = df_merged[['Mkt-RF', 'SMB', 'HML', 'RMW', 'CMA']]
-    X = sm.add_constant(X)
+print("\n--- R-SQUARED OVER TIME ---")
+print(df_results[['R-Squared']].round(4))
 
-    model = sm.OLS(Y, X).fit()
+print("\n--- BETAS (COEFFICIENTS) OVER TIME ---")
+print(df_results[['Alpha', 'Beta_Mkt', 'Beta_SMB', 'Beta_HML', 'Beta_RMW', 'Beta_CMA']].round(4))
 
-    # 5. PRINT RESULTS
-    print("\n--- FACTOR-BASED RISK ARCHITECTURE RESULTS ---")
-    print(model.summary())
+print("\n--- P-VALUES (SIGNIFICANCE) OVER TIME ---")
+print(df_results[['Pval_Alpha', 'Pval_Mkt', 'Pval_SMB', 'Pval_HML', 'Pval_RMW', 'Pval_CMA']].round(4))
