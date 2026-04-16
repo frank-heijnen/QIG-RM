@@ -116,3 +116,484 @@ benefit that the old formula was ignoring.
     default; shorten it if there has been a structural break in FX regime.
   - The notebook prints both a console summary and a LaTeX snippet that
     can be pasted straight into the monthly risk report.
+
+
+=============================================================
+Model-risk backtesting framework -- v1 skeleton
+Branch:  Bart_new
+Date:    2026-04-16
+Author:  Bart van den Akker
+Files:   model_risk/  (new package)
+         requirements.txt
+=============================================================
+
+1. Why this exists
+------------------
+Model risk is a core risk-management responsibility, and so far none of
+our internal risk models (the parametric FX VaR, the GBM and GARCH(1,1)
+Monte-Carlo engines in models/Portfolio.py, the historical-simulation VaR
+used elsewhere) are validated in any systematic way. The existing
+`backtesting/` folder is for *strategy* research -- it answers "does this
+signal make money" and is not the right place to test whether our risk
+numbers are calibrated.
+
+The framework introduced here is modelled on two pieces of regulatory
+practice:
+
+  (a) The Basel VaR backtesting cycle (traffic-light test on 1-day 99%
+      VaR over a rolling 250-day window), and the two standard
+      statistical tests that go with it -- Kupiec's proportion-of-failures
+      (unconditional coverage) and Christoffersen's independence /
+      conditional-coverage tests.
+
+  (b) PLAT (the P&L Attribution Test from FRTB), which compares
+      Hypothetical P&L (HPL -- the portfolio revalued under static
+      positions) with Risk-Theoretical P&L (RTPL -- the portfolio
+      revalued using only the risk factors the model sees). PLAT catches
+      *missing* risk factors, which coverage tests alone cannot.
+
+v1 implements (a). (b) is deferred -- see section 5.
+
+
+2. Folder layout
+----------------
+    model_risk/
+        __init__.py
+        protocols.py                -- VaRModel protocol, VaRForecast,
+                                       TestResult dataclasses.
+        pnl.py                      -- compute_hpl_eur: frozen-position
+                                       hypothetical P&L in EUR.
+        runner.py                   -- walk-forward engine (run_backtest).
+        diagnostics/
+            __init__.py
+            coverage.py             -- Kupiec POF, Christoffersen
+                                       independence and CC, Basel
+                                       traffic-light and multiplier.
+        adapters/
+            __init__.py
+            historical_simulation.py -- first concrete adapter.
+
+A new folder rather than extending `backtesting/` because the two do
+genuinely different jobs; keeping them separated avoids future confusion
+about which backtest someone ran.
+
+
+3. The model protocol
+---------------------
+Every VaR model plugs in by implementing two methods:
+
+    class VaRModel(Protocol):
+        name: str
+        def calibrate(self, history: pd.DataFrame) -> None: ...
+        def forecast(self, positions: pd.Series | None,
+                     horizon: int = 1, alpha: float = 0.99) -> VaRForecast: ...
+
+Splitting calibration from forecasting matters because GARCH-style
+re-estimation is expensive but positions change every day. The runner
+calls `calibrate` on a user-chosen cadence (daily / weekly / monthly /
+every N days) and `forecast` every day.
+
+`VaRForecast` carries the number itself and an optional ES, so the same
+harness can later run ES backtests (Acerbi-Sz\'ekely) without signature
+changes. The no-lookahead guarantee is enforced by the runner: models
+are only ever handed `history.loc[history.index < t]`.
+
+
+4. The runner and the diagnostic tests
+--------------------------------------
+run_backtest(model, history, positions, hpl, window, alpha, horizon,
+             refit_every) produces a DataFrame indexed by date with
+columns (var, es, hpl, breach). Breach = hpl < -var.
+
+Given that DataFrame, the diagnostics module offers:
+
+  - kupiec_pof(breaches, alpha)                -- unconditional coverage
+        LR = -2 * log(L0 / L1), chi2(1). Tests whether the realised
+        breach rate equals (1 - alpha).
+
+  - christoffersen_independence(breaches)      -- serial independence
+        Likelihood-ratio on the first-order Markov transition counts.
+        Catches "clustered breaches" that Kupiec misses.
+
+  - christoffersen_cc(breaches, alpha)         -- joint conditional
+        coverage test, LR_cc = LR_uc + LR_ind, chi2(2).
+
+  - rolling_traffic_light(breaches, window=250)
+        For each day, the trailing-250 breach count, zone (green <=4,
+        yellow 5-9, red >=10) and the Basel VaR multiplier
+        (3.0 in green; 3.0 + {0.40, 0.50, 0.65, 0.75, 0.85} across
+        yellow; 4.0 in red).
+
+These are the "first four numbers" you would put in any presentation
+about VaR model validity.
+
+
+5. What v1 does NOT contain (deliberate)
+----------------------------------------
+  - PLAT (HPL vs RTPL). Needs a risk-factor decomposition none of our
+    models currently expose. The slot is there -- the protocol can be
+    extended to return the factor set used -- but waiting until at
+    least one model has a clean factor representation.
+
+  - Multi-horizon VaR. The signature accepts `horizon` but only 1-day is
+    implemented. The GARCH adapter will need horizon > 1 eventually.
+
+  - The parametric FX adapter. The logic currently lives inside
+    macro/Exchange_rate_risk.ipynb and is not importable from a .py
+    module. Next step is to extract it into macro/fx_risk.py; after
+    that, adapters/parametric_fx.py can wrap it in two screens of code.
+
+  - Historical position snapshots. None exist in any archive we have
+    access to, so the harness operates under a constant-book assumption
+    (see the pivot section at the bottom of this file). `compute_hpl_eur`
+    and the new `constant_book_frames` helper together convert today's
+    broker-statement book into the daily quantity and EUR-value frames
+    the runner needs.
+
+
+6. First concrete adapter -- HistoricalSimulationVaR
+----------------------------------------------------
+A deliberately simple model: VaR at level alpha is the (1-alpha)
+empirical quantile over a trailing window of portfolio daily P&L,
+ES is the mean of the losses beyond that quantile. It ignores positions
+and works at portfolio level. Purpose: smoke-test the harness end-to-end
+without depending on anything else.
+
+
+7. Smoke-test run
+-----------------
+A 780-day synthetic EUR P&L series (normal, sigma 10k, two injected
+shocks of -80k and -60k) was run through the harness with a 250-day
+calibration window, monthly refit, 99% VaR, and a 519-day test window.
+
+Output highlights:
+
+  Total days: 519
+  Breaches:   9       (1.73%, expected 1.00%)
+
+  Kupiec POF            LR = 2.32,  p = 0.128   -> do not reject
+  Christoffersen ind    LR = 0.32,  p = 0.573   -> do not reject
+  Christoffersen CC     LR = 2.64,  p = 0.268   -> do not reject
+  Rolling traffic light end-of-period: green zone, multiplier 3.0
+
+The two injected shocks produce two breach clusters within 250 days of
+each other; the diagnostic pipeline flags neither as statistically
+significant individually, which is the expected behaviour for such a
+small sample of extreme events. Plumbing verified.
+
+
+8. Dependencies
+---------------
+Added `scipy` (for chi2 CDF in the coverage tests) and `arch` (already
+used by Portfolio.py's GARCH simulation, now listed explicitly) to
+requirements.txt.
+
+
+9. How to use from a notebook or script
+---------------------------------------
+    from model_risk.adapters.historical_simulation import HistoricalSimulationVaR
+    from model_risk.runner import run_backtest
+    from model_risk.diagnostics.coverage import (
+        kupiec_pof, christoffersen_independence, christoffersen_cc,
+        rolling_traffic_light,
+    )
+
+    model = HistoricalSimulationVaR(window=250)
+    result = run_backtest(
+        model=model,
+        history=portfolio_pnl_eur.to_frame(),
+        positions=None,
+        hpl=portfolio_pnl_eur,
+        window=('2024-01-02', '2025-12-31'),
+        alpha=0.99,
+        refit_every='M',
+    )
+
+    print(kupiec_pof(result.breach, alpha=0.99))
+    print(christoffersen_cc(result.breach, alpha=0.99))
+    print(rolling_traffic_light(result.breach).tail())
+
+
+10. Next steps (in priority order)
+----------------------------------
+  1. Extract FX VaR logic from macro/Exchange_rate_risk.ipynb into
+     macro/fx_risk.py. Wrap as adapters/parametric_fx.py.   [DONE -- see
+     section below]
+  2. Run the harness on the current book under a constant-book
+     assumption.   [DONE -- see pivot section at end]
+  3. Add GBM-MC and GARCH-MC adapters on top of the existing methods
+     in models/Portfolio.py (these care about refit_every = 'M' because
+     refit cost is non-trivial).
+  4. A small reports/ module that emits the standard chart (VaR vs P&L
+     with breaches marked) + rolling-traffic-light plot + test summary
+     table, written to results/<model_name>_<date>/.
+  5. Once a factor decomposition exists, add a PLAT module (HPL vs
+     RTPL, KS and Spearman, FRTB desk-pass thresholds).
+
+
+=============================================================
+Model-risk backtesting framework -- parametric FX adapter
+Branch:  Bart_new
+Date:    2026-04-16
+Author:  Bart van den Akker
+Files:   macro/fx_risk.py                    (new)
+         macro/__init__.py                   (new)
+         model_risk/adapters/parametric_fx.py (new)
+=============================================================
+
+1. What changed
+---------------
+The FX VaR logic that previously lived only inside the Jupyter cells of
+macro/Exchange_rate_risk.ipynb is now also available as a pure-Python
+module macro/fx_risk.py. The notebook still works as before; the module
+lets the same calculation run from a script, a pytest, or the new
+model-risk backtest harness without copy-paste.
+
+A second new file -- model_risk/adapters/parametric_fx.py -- wraps that
+module in the VaRModel protocol so the runner can walk-forward backtest
+the parametric FX VaR against a positions time series.
+
+
+2. macro/fx_risk.py -- public surface
+-------------------------------------
+Free functions, no hidden state:
+
+  download_fx_history(currencies, start, end)
+    -- Thin wrapper around yfinance, one column per non-EUR currency.
+
+  download_stock_history(tickers, start, end)
+    -- Adjusted close prices in listing currency.
+
+  fx_vol_and_covariance(fx_prices, trading_days=252)
+    -- Annualized sigma vector and covariance matrix of EUR/ccy
+       log-returns. Same arithmetic as cell 5 of the notebook.
+
+  estimate_fx_betas(stock_prices, fx_prices, currency_map)
+    -- Per-stock FX beta via OLS on daily log-returns. Returns a
+       DataFrame indexed by ticker with columns [ccy, beta_fx,
+       fx_factor = 1 + beta_fx]. Identical to cell 7.
+
+  effective_notional_by_currency(positions_eur, currency_map,
+                                 cash_by_ccy, betas)
+    -- Per-currency gross and effective EUR notionals. Cell 9.
+
+  parametric_fx_var(notional_by_ccy, cov_fx_ann, sigma_fx_ann,
+                    nav_eur, alpha, horizon_years)
+    -- Per-currency and portfolio parametric VaR. Cell 11. Returns an
+       FxVaRResult dataclass bundling the per-currency breakdown, the
+       portfolio VaR in EUR and as a percentage of NAV, plus the z and
+       horizon used. Default alpha=0.95, horizon_years=1/12 to match
+       the monthly report; the adapter overrides these.
+
+  compute_fx_var(positions_eur, currency_map, cash_by_ccy,
+                 stock_prices, fx_prices, alpha, horizon_years)
+    -- One-shot helper equivalent to cells 5, 7, 9, 11. Convenient for
+       the monthly run or for unit tests that supply prices inline.
+
+The downloaders are inside the functions (not module-level) so the
+module imports offline and is easy to mock in tests.
+
+
+3. model_risk/adapters/parametric_fx.py -- ParametricFxVaR
+----------------------------------------------------------
+Implements the VaRModel protocol:
+
+  calibrate(history) expects a DataFrame with MultiIndex columns:
+    level 0 in {'stock', 'fx'}, level 1 = ticker or currency code.
+    Internally it estimates sigma_ann, cov_ann and per-stock betas and
+    stores them on the instance.
+
+  forecast(positions, horizon=1, alpha=0.99) expects positions to be a
+    pd.Series keyed by ticker of EUR-denominated values (quantity *
+    price * spot already translated upstream). Cash per currency is
+    looked up via the cash_by_ccy_fn callable injected at construction:
+
+        ParametricFxVaR(currency_map={'APP': 'USD', ...},
+                        cash_by_ccy_fn=lambda date: {'EUR': ..., ...})
+
+    The callable receives the forecast date (or None) so the same
+    adapter works with static dicts (ignore the argument) or a per-date
+    lookup once a cash-history frame exists.
+
+  Returns VaRForecast(var, es=None, meta={per_currency, nav_eur, z}).
+  ES under Normal is a two-line addition (sigma * phi(z) / (1 - alpha))
+  but was left out of v1 because the backtest harness does not yet test
+  ES; it will go in alongside the Acerbi-Szekely ES test.
+
+Why positions-in-EUR rather than quantities: the alternative --
+accepting quantities + a second prices frame at forecast time -- would
+duplicate logic already present in pnl.compute_hpl_eur and would force
+the runner to carry FX-spot data through a second pathway. Doing the
+translation once, upstream, is cleaner. The pivot section (end of file)
+describes the helper that now performs that translation from today's
+broker-statement snapshot onto every day of the history window.
+
+
+4. Smoke tests
+--------------
+Two tests run against a 500-day synthetic FX and stock panel:
+
+  (a) Free-function path, compute_fx_var with the same portfolio shape
+      as the notebook (APP + LLY in USD, a CHF equity, PNDORA.CO in DKK,
+      LIGHT.AS in EUR, plus cash in four currencies). Produces a
+      sensible per-currency breakdown and portfolio 1M 95% VaR close to
+      1% of NAV.
+
+  (b) Adapter + runner walk-forward over a 130-day window at 99% 1-day
+      with monthly refit. The runner completes cleanly; the ParametricFxVaR
+      instance calibrates on the MultiIndex history, retrieves cash from
+      the lookup function, and emits a VaR per day. The mean VaR is
+      stable across the window because the constant-book placeholder
+      holds positions fixed, which is exactly what you expect.
+
+Important caveat surfaced by (b): in the synthetic run the breach rate
+was far above the 1% target, because the realised HPL contained *total*
+P&L (equity + FX) while the FX model only claims to forecast the FX
+component. The honest comparison is HPL-FX-component vs parametric FX
+VaR. A clean decomposition sits at the input side of PLAT, so this is
+another reason to keep PLAT on the roadmap.
+
+
+5. Notebook status
+------------------
+macro/Exchange_rate_risk.ipynb was NOT rewired to call the new module
+in this change. The notebook still runs end-to-end as before; rewriting
+it to use macro.fx_risk functions is separate cleanup and does not block
+the backtest framework. Left as an easy follow-up.
+
+
+6. Updated next steps
+---------------------
+  1. DONE -- parametric FX extraction and adapter.
+  2. DONE -- constant-book end-to-end run (see pivot section below).
+  3. Decompose HPL into FX vs equity components so the FX adapter can
+     be backtested against only the FX part of P&L (this is a very
+     light pre-PLAT step and the single most important next item --
+     without it, breach counts on the FX model are meaningless).
+  4. GBM-MC and GARCH-MC adapters over Portfolio.py.
+  5. Reports module.
+  6. Rewire Exchange_rate_risk.ipynb to call macro.fx_risk.
+  7. Full PLAT once risk-factor decomposition is in place.
+
+
+=============================================================
+Model-risk backtesting framework -- pivot to constant-book
+Branch:  Bart_new
+Date:    2026-04-16
+Author:  Bart van den Akker
+Files:   model_risk/pnl.py                              (extended)
+         model_risk/adapters/parametric_fx.py           (docstring)
+         model_risk/examples/fx_backtest_constant_book.py (new)
+         model_risk/examples/__init__.py                (new)
+         macro/fx_risk.py                               (yfinance fix)
+=============================================================
+
+1. Why the pivot
+----------------
+The plan called for a Basel-style walk-forward backtest against the
+portfolio we actually held on each day of the window. That requires a
+daily position snapshot going back ~250 trading days. No such archive
+exists in our data -- broker statements are collected for the monthly
+risk report and are not stored as a history.
+
+Rather than stall the model-risk workstream, we switch to a
+**constant-book** assumption: take today's broker-statement positions
+and today's cash by currency, and ask -- under real historical market
+data, how would the parametric FX VaR model have called risk on this
+exact book, and how often would the realised hypothetical P&L have
+broken through the VaR line.
+
+This is not a Basel-compliant backtest. It tests the *model*, not the
+model-on-the-actual-book. Interpreted honestly it catches several real
+failure modes -- VaR that never adapts to changing vol, VaR scaled
+wrong by orders of magnitude, breach clusters that suggest missing
+risk factors -- but it cannot distinguish "the model was wrong" from
+"we held a different book back then". Coverage-test numbers are
+published with that caveat attached.
+
+
+2. What changed
+---------------
+  - pnl.py gains `constant_book_frames(positions_eur_now, eur_prices,
+    anchor_date=None) -> (quantities, eur_values)`. It infers constant
+    share counts from today's EUR values at an anchor date and
+    broadcasts them across every day in eur_prices. The `quantities`
+    frame is what `compute_hpl_eur` needs to build HPL; the
+    `eur_values` frame is what the FX adapter needs at forecast time.
+
+  - adapters/parametric_fx.py docstring was cleaned up: references to
+    "broker statement" and "when the real positions file lands" were
+    pulled. The adapter's contract is unchanged.
+
+  - examples/fx_backtest_constant_book.py is a runnable script that
+    pulls today's book from the monthly FX notebook (POSITIONS_EUR_NOW,
+    CURRENCY_MAP, CASH_BY_CCY_NOW), downloads FX and stock history via
+    macro.fx_risk, builds the constant-book frames, and runs the full
+    harness over a 2024-06 -> 2025-10 window at 99% 1-day with monthly
+    refit. Command:
+
+        python -m model_risk.examples.fx_backtest_constant_book
+
+  - macro/fx_risk.py now passes auto_adjust=True explicitly to yfinance,
+    silencing a FutureWarning that would have been noisy in the report
+    output.
+
+
+3. First real-data run -- numbers and interpretation
+----------------------------------------------------
+Using the current book exactly as entered in the FX notebook, the
+constant-book backtest from 2024-06-03 to 2025-10-15 (333 trading days)
+gives:
+
+    Breaches       : 61  (18.32% vs 1.00% expected)
+    VaR (EUR)      : min 40.98   mean 51.26   max 66.42
+    HPL (EUR)      : min -336.62  max 302.97
+
+    Kupiec POF           LR = 250.16,  p < 1e-10   -> REJECT
+    Christoffersen ind   LR =   1.00,  p = 0.32    -> do not reject
+    Christoffersen CC    LR = 251.16,  p < 1e-10   -> REJECT
+    Rolling traffic light (end): red, multiplier 4.0
+
+The Kupiec rejection is expected and does not indicate FX-model
+failure. The HPL series contains the **total** daily P&L on the book
+(equity + FX), while the parametric FX VaR forecasts only the FX
+component. Equity volatility on a ~6k EUR book is very much larger
+than FX volatility, so every non-trivial equity move breaks through
+an FX-only VaR.
+
+The informative reading of this run is the Christoffersen independence
+test: p = 0.32, failing to reject iid breaches. That tells us the
+FX-VaR level, small as it is, is not producing *clustered* breaches.
+The model's day-to-day stability and refit cadence are fine; it is
+simply scoped narrower than the P&L stream it is being measured
+against.
+
+
+4. What this unblocks -- and what it flags as urgent
+----------------------------------------------------
+Unblocked:
+  - The full pipeline -- download -> calibrate -> walk-forward ->
+    coverage tests -> traffic light -> multiplier -- is now exercised
+    end-to-end on real data. Any future model adapter plugs into the
+    same script with a three-line swap.
+  - The monthly FX risk report can cite a backtest number (with the
+    honest caveat) rather than an unvalidated VaR.
+
+Flagged:
+  - Decomposing HPL into FX vs equity contributions is now the single
+    most useful next piece of work. Without it, no meaningful breach
+    count can be reported against the FX model. The decomposition is
+    straightforward: for each day, FX contribution = sum_i V_i *
+    r_FX_i; equity contribution = HPL - FX contribution. This is a
+    small function in pnl.py and does not require any new data.
+
+
+5. Operational note for the presentation
+----------------------------------------
+When presenting this work, lead with the *framework* (protocol,
+runner, diagnostics, traffic light) as the deliverable. The numbers
+above are a plumbing verification on real data, not a model verdict.
+The red zone is a property of the comparison, not a property of the
+FX model.
+
+
