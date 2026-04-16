@@ -5,3 +5,5 @@ __pycache__/
 
 # Conda environment folders to ignore, right now not needed
 
+# Holdings (contains private broker data / screenshots)
+holdings/

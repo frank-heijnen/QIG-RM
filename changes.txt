@@ -1,0 +1,118 @@
+=============================================================
+Changes to the Exchange Rate Risk calculation
+Branch:  Bart_new
+Date:    2026-04-16
+Author:  Bart van den Akker
+File:    macro/Exchange_rate_risk.ipynb
+=============================================================
+
+1. Why we changed it
+--------------------
+The previous FX VaR calculation used the parametric formula
+
+    VaR_1M^95  =  z_95  *  (USD_equity_in_EUR / NAV_EUR)  *  NAV_EUR  *  sigma_FX * sqrt(1/12)
+
+with sigma_FX hard-coded at 5% and only USD/EUR in scope. Two problems:
+
+  (a) It treats every USD-denominated stock as if it were pure USD cash,
+      i.e. 100% exposed to EUR/USD. Most US large-caps we hold (GOOG,
+      LLY, UNH, NOW, NEM, ...) are multinationals with substantial foreign
+      revenues. When the dollar weakens, their foreign earnings translate
+      into more USD and the share price tends to rise -- a natural hedge
+      that the old formula ignored entirely.
+
+  (b) sigma_FX was a fixed number rather than something measured from recent
+      data.
+
+  (c) Only USD was in scope. The actual portfolio also carries CHF cash and
+      a DKK-listed equity + DKK cash, which the old number did not touch.
+
+Together these shortcuts made the reported FX VaR materially larger than
+the portfolio's true economic FX risk.
+
+
+2. What the new calculation does
+--------------------------------
+Step 1 -- Classify holdings by currency of listing
+    Positions are read from the broker statement and tagged by listing
+    currency (USD / EUR / CHF / DKK). Cash is tagged likewise. Anything in
+    EUR contributes zero FX risk by definition.
+
+Step 2 -- Empirical FX volatilities and covariance
+    For every non-EUR currency we download daily EUR/ccy prices over the
+    last ~2 years, compute daily log-returns and annualize with sqrt(252).
+    We also keep the full FX covariance matrix for the portfolio-level VaR.
+
+Step 3 -- FX beta per stock
+    For each non-EUR stock i we regress its local-currency daily log-return
+    on the corresponding FX log-return:
+
+        r_i,ccy = alpha_i + beta_i * r_FX + epsilon_i.
+
+    beta_i measures how sensitive stock i's local-currency price is to a
+    move in its own currency. Typical US multinationals have beta_i < 0
+    (stock rises when USD weakens).
+
+Step 4 -- Effective FX factor loading
+    Translating stock i to EUR gives
+
+        r_i,EUR = r_i,ccy + r_FX
+                = alpha_i + (1 + beta_i) * r_FX + epsilon_i,
+
+    so the stock's effective loading on the FX factor is (1 + beta_i), NOT
+    1. A stock with beta_i = -0.4 only contributes 60% of its EUR market
+    value to our FX exposure.
+
+    Cash in a foreign currency has no stock-level natural hedge, so its
+    factor loading stays at 1.
+
+Step 5 -- Per-currency effective notional
+    For each non-EUR currency c:
+
+        N_eff_c = sum over stocks in c of (1 + beta_i) * V_i   +   cash_c.
+
+Step 6 -- Parametric VaR
+    Per currency:
+
+        VaR_1M^95,c = z_95 * |N_eff_c| * sigma_c * sqrt(1/12).
+
+    Portfolio-level, using the full annualized FX covariance matrix Sigma:
+
+        sigma^2_port,1M = n^T Sigma n * (1/12),
+        VaR_1M^95       = z_95 * sigma_port,1M,
+
+    where n is the vector of effective notionals across non-EUR currencies.
+    The covariance form matters because EUR/USD and EUR/CHF are
+    correlated; ignoring this would overstate (or understate) the
+    portfolio-level number.
+
+
+3. Notes on the current portfolio
+---------------------------------
+  - USD is the dominant FX exposure: 11 equities plus USD cash.
+  - CHF is cash-only; loading = 1 (pure translation risk, no hedge).
+  - DKK is effectively pegged to EUR (ERM II band +/- 2.25%, defended by
+    Danmarks Nationalbank). Empirical EUR/DKK vol is typically below 1%,
+    so PNDORA and DKK cash contribute negligible FX risk. The notebook
+    computes the number anyway rather than hard-coding a "zero".
+
+
+4. Sanity check
+---------------
+If every beta_i were 0 and all non-EUR holdings were cash, (1 + beta_i)
+collapses to 1, N_eff equals the gross notional, and the new formula
+reduces to the old one (up to the covariance structure). The gap between
+the new and old numbers is therefore a clean measure of the natural-hedge
+benefit that the old formula was ignoring.
+
+
+5. Operational notes for the monthly run
+----------------------------------------
+  - Update `positions` and `cash_by_ccy` in section 1 of the notebook from
+    the broker statement each month. Holdings screenshots live in
+    `holdings/` (gitignored so we don't leak private broker data).
+  - The historical window for sigmas / betas is controlled by
+    `hist_start` / `hist_end`. Two years of daily data is a reasonable
+    default; shorten it if there has been a structural break in FX regime.
+  - The notebook prints both a console summary and a LaTeX snippet that
+    can be pasted straight into the monthly risk report.
