@@ -7,3 +7,6 @@ __pycache__/
 
 # Holdings (contains private broker data / screenshots)
 holdings/
+
+# Per-run backtest outputs (regenerable; configs in-repo are enough)
+results/

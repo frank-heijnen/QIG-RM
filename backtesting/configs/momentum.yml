@@ -1,0 +1,36 @@
+strategy:
+  class: MomentumStrategy
+  parameters:
+    lookback: 60
+    top_quantile: 0.2
+
+data:
+  universe:
+    - AAPL
+    - MSFT
+    - GOOGL
+    - AMZN
+    - NVDA
+    - META
+    - TSLA
+    - JPM
+    - JNJ
+    - V
+  freq: "1D"
+  source: "yfinance"
+
+execution:
+  slippage_bps: 3
+  fees_bps: 1
+
+risk:
+  max_leverage: 1.0
+
+backtest:
+  start: "2020-01-01"
+  end: "2024-12-31"
+  initial_capital: 1000000
+  rebalance_frequency: "1M"
+
+output:
+  path: "results/momentum_v1/"

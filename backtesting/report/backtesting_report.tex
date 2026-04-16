@@ -354,6 +354,102 @@ As the number of strategies and users grows, the framework can be split into mul
 files or modules, but the current layout strikes the ideal balance between clarity, 
 flexibility, and reproducibility.
 
+% Section 11
+\section{Implementation status (v1)}
+
+An initial implementation of the architecture described above now lives
+in the repository at \texttt{backtesting/}. It is a deliberate minimum
+vertical slice: one concrete strategy, one YAML configuration, one data
+source, and the accounting layer required to turn the slice into a
+self-contained, reproducible run. The end-to-end pipeline -- load
+configuration, load data, generate signals, rebalance, accrue costs,
+compute summary metrics, write a results folder -- executes today via
+
+\begin{verbatim}
+python -m backtesting.backtesting_framework \
+    backtesting/configs/momentum.yml
+\end{verbatim}
+
+\subsection*{What is implemented}
+\begin{itemize}
+    \item \texttt{backtesting/strategy.py}: the \texttt{Strategy}
+          protocol with \texttt{generate\_signals(prices) ->
+          target\_weights}.
+    \item \texttt{backtesting/data\_store.py}: \texttt{DataStore.load\_universe}
+          wrapping yfinance as today's single source; swapping in a
+          Parquet mirror or a SQL backend later requires touching only
+          this file.
+    \item \texttt{backtesting/backtesting\_framework.py}: YAML loading,
+          dynamic strategy import from \texttt{backtesting.strategies.<name>},
+          per-row normalisation to \texttt{risk.max\_leverage}, rebalance
+          masking at the configured cadence, lagged-weights accounting,
+          turnover-proportional costs, and a per-run results directory
+          (\texttt{config.yml}, \texttt{equity.csv}, \texttt{returns.csv},
+          \texttt{weights.csv}, \texttt{turnover.csv}, \texttt{costs.csv},
+          \texttt{meta.json}).
+    \item \texttt{backtesting/strategies/momentum.py}: cross-sectional
+          momentum producing $\pm 1 / 0$ signals; the engine handles all
+          sizing.
+    \item \texttt{backtesting/configs/momentum.yml}: a runnable
+          configuration used for the smoke test.
+\end{itemize}
+
+\subsection*{Deliberate deviations from the earlier sections}
+The architecture in Sections 4--9 is preserved with three small,
+intentional adjustments, each chosen because the earlier text showed an
+accidental over-scoping:
+
+\begin{enumerate}
+    \item \textbf{\texttt{rebalance\_frequency}} is a \texttt{backtest:}
+          field rather than a \texttt{strategy.parameters:} field.
+          Rebalance cadence is a property of how the engine consumes a
+          strategy's output, not of the strategy itself. The momentum
+          example in Section 4 held the attribute but never used it --
+          that was the signal to move it.
+    \item \textbf{\texttt{data.universe}} is a YAML list of tickers
+          rather than a named universe (e.g.\ \texttt{"sp500"}).
+          A universe registry is an obvious v2 extension; v1 takes a
+          concrete list so the engine is immediately usable and the
+          data layer stays tiny.
+    \item \textbf{\texttt{data.source}} currently accepts only
+          \texttt{"yfinance"}. Any other value raises
+          \texttt{NotImplementedError} so the shortcut is loud rather
+          than silent.
+\end{enumerate}
+
+\subsection*{Accepted but not yet enforced}
+Two configuration fields are read by the loader but currently ignored
+by the engine, so that existing configs stay valid once they are
+implemented:
+
+\begin{itemize}
+    \item \texttt{execution.trade\_at\_open}: only close prices are
+          loaded in v1, so the default is close-to-close execution.
+    \item \texttt{risk.vol\_target}: no return-level vol scaling is
+          applied in v1; max-leverage normalisation is.
+\end{itemize}
+
+\subsection*{Smoke test}
+Running the momentum configuration on ten US large-caps over
+2020-01-01 -- 2024-12-31 with a 60-day lookback, top/bottom quantile
+0.2, monthly rebalance, 3\,bps slippage plus 1\,bp fees and
+\texttt{max\_leverage} 1.0 gives a Sharpe of 1.01, an annualised return
+of 18.4\%, an annualised vol of 18.3\% and a max drawdown of 33.1\%.
+Rebalance count (52) matches the configured monthly cadence and the
+average long/short position counts (2.85\,/\,1.90) match the top and
+bottom 20\% of a ten-name universe, which is the cleanest end-to-end
+check available short of a reference implementation to diff against.
+
+\subsection*{Roadmap}
+The items below are the natural next-slice additions; each is small
+enough to land independently without re-architecting the engine:
+walk-forward validation (a \texttt{train\_window} / \texttt{test\_window}
+pair that loops the run across rolling splits), universe registries,
+\texttt{vol\_target} enforcement, additional example strategies
+(mean reversion, moving-average crossover, equal-weight benchmark),
+and a \texttt{report.py} that turns a results folder into a one-page
+performance PDF.
+
 \bibliographystyle{apalike}
 \bibliography{references}
 

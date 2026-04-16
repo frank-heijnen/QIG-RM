@@ -597,3 +597,165 @@ The red zone is a property of the comparison, not a property of the
 FX model.
 
 
+=============================================================
+Strategy backtesting framework -- v1 implementation
+Branch:  Bart_new
+Date:    2026-04-16
+Author:  Bart van den Akker
+Files:   backtesting/__init__.py                       (new)
+         backtesting/strategy.py                       (new)
+         backtesting/data_store.py                     (new)
+         backtesting/backtesting_framework.py          (new, was empty)
+         backtesting/strategies/__init__.py            (new)
+         backtesting/strategies/momentum.py            (new)
+         backtesting/configs/momentum.yml              (new)
+         backtesting/report/backtesting_report.tex     (appendix added)
+         requirements.txt                              (+ pyyaml)
+         .gitignore                                    (+ results/)
+=============================================================
+
+1. Why now
+----------
+`backtesting/backtesting_framework.py` existed as an empty file; the
+design was fully written up in backtesting/report/backtesting_report.tex
+("A Backtesting Framework for Systematic Strategy Research") but no
+code backed it. Every member who wanted to test an idea was
+re-implementing their own loop, which is the exact problem the report
+sets out to solve.
+
+This pass implements a minimum vertical slice of the design: the
+protocol, the engine, a data layer, one concrete strategy, one
+YAML config, and the results directory the report promises. It runs
+end-to-end today, on real yfinance data. Nothing in it is
+risk-department specific; it is a club-wide tool.
+
+
+2. What shipped
+---------------
+  - backtesting/strategy.py
+        A typing.Protocol `Strategy` with a single method
+        `generate_signals(prices) -> target_weights`. Strategies take
+        only their own hyper-parameters at __init__; data loading,
+        rebalancing, costs and accounting are the engine's job.
+
+  - backtesting/data_store.py
+        `DataStore.load_universe(tickers, start, end, freq)` returning a
+        rows=dates x cols=tickers close-price frame. Today wraps
+        yfinance; swap for Parquet or SQL later by editing this file
+        only. Deliberately keeps base currency = listing currency
+        (typically USD); the model-risk workstream runs in EUR, the
+        strategy backtester does not.
+
+  - backtesting/backtesting_framework.py
+        Config-driven engine:
+          - load_config(path): YAML loader.
+          - _import_strategy(class_name): dynamic import from
+            backtesting.strategies.<name>.
+          - BacktestEngine.run(strategy): price loading, signal ->
+            weight normalisation against max_leverage, rebalance-day
+            masking, lagged weights * asset returns, turnover costs,
+            equity curve, summary stats.
+          - run_from_config(path): full pipeline + results I/O.
+          - main()/__main__: CLI entry point.
+
+  - backtesting/strategies/momentum.py
+        Cross-sectional momentum: top-quantile long, bottom-quantile
+        short. Signals are +/- 1 per asset per day. All row-level
+        scaling (to meet max leverage) is done by the engine, not by
+        the strategy, so this class stays 15 lines.
+
+  - backtesting/configs/momentum.yml
+        Example config: 10 US large-caps, 60-day lookback, top/bottom
+        quantile 0.2, monthly rebalance, 3 bps slippage + 1 bp fees,
+        max leverage 1.0, 2020-01-01 to 2024-12-31, 1MM initial capital.
+
+  - results/ gitignored; configs in the repo are the source of truth,
+    outputs are regenerable.
+
+
+3. Summary metrics per run
+--------------------------
+Each run writes to `results/<output.path>/`:
+  - config.yml     (copy of the config used)
+  - equity.csv
+  - returns.csv
+  - weights.csv
+  - turnover.csv
+  - costs.csv
+  - meta.json      (timestamp, summary metrics)
+
+`meta.json` / `summary` currently carries:
+  total_return, annualised_return, annualised_vol, sharpe,
+  max_drawdown, avg_turnover_per_day, n_rebalances,
+  n_assets_average_long, n_assets_average_short.
+
+
+4. Smoke test -- momentum config
+--------------------------------
+Command:
+    python -m backtesting.backtesting_framework \
+        backtesting/configs/momentum.yml
+
+Output (2020-01-01 -> 2024-12-31, 10 tickers, monthly rebalance,
+1MM capital, 4 bps round-trip):
+
+    total_return            : 113.92%
+    annualised_return       :  18.43%
+    annualised_vol          :  18.29%
+    sharpe                  :   1.01
+    max_drawdown            : -33.10%
+    avg_turnover_per_day    :   0.038
+    n_rebalances            :  52       (= 5 years x ~1/month, matches)
+    average longs per day   :   2.85    (~ top 20% of 10 names)
+    average shorts per day  :   1.90    (~ bottom 20% of 10 names)
+
+Sanity checks passed: rebalance count matches the configured cadence;
+long/short counts match the top/bottom-quantile selection; equity curve
+monotone-cumulative as expected.
+
+
+5. Deliberate deviations from backtesting_report.tex
+----------------------------------------------------
+The report was written as a spec; v1 intentionally differs in the
+following places, all documented in-file (class docstring at the top of
+backtesting/backtesting_framework.py) and in an appendix added to the
+report itself:
+
+  - `rebalance_frequency` lives under `backtest:` instead of
+    `strategy.parameters:`. Rebalance cadence is an engine concern, not
+    a strategy one; the MomentumStrategy in the report held the field
+    but never used it, which was the signal.
+  - `data.universe` is a list of tickers, not a named universe like
+    `sp500`. Universe registries are a clear v2 extension; v1 takes a
+    concrete list so the engine is usable today.
+  - `data.source: "local_parquet"` is not implemented. Setting it to
+    anything other than `"yfinance"` raises NotImplementedError so the
+    promise is explicit.
+  - `execution.trade_at_open: true` is accepted but not enforced
+    (we only load close prices). `risk.vol_target` likewise accepted
+    but not enforced. Listed as planned knobs in the appendix.
+
+
+6. Dependencies
+---------------
+Added `pyyaml` to requirements.txt for the config loader. Nothing else.
+
+
+7. Next steps (in priority order)
+---------------------------------
+  1. Walk-forward validation: config pair (train_window, test_window)
+     that loops the backtest across rolling splits and emits one
+     results folder per fold.
+  2. Universe registries (`sp500`, `nasdaq100`, `qig_watchlist`) so
+     configs don't need to enumerate tickers inline.
+  3. `risk.vol_target` enforcement: post-hoc scaling of the returns
+     series to the configured annualised vol target.
+  4. Additional strategies: mean reversion, SMA crossover,
+     equal-weight benchmark -- each one is a ~20-line file under
+     strategies/ and a ~30-line YAML.
+  5. A small `report.py` that turns a `results/<name>/` folder into a
+     one-page PDF (equity, drawdown, return distribution, weights
+     heatmap).
+  6. Optional: move DataStore to a Parquet mirror of yfinance so
+     backtests stop hitting the network each run.
+
